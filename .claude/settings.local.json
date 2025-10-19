@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(python3:*)",
-      "Bash(git init)"
+      "Bash(git init)",
+      "Bash(find . -name \"*.py\" -not -path \"./.venv/*\" -not -path \"./venv/*\" -exec cat {})",
+      "Bash(git restore --staged .claude/settings.local.json)",
+      "Bash(git add .github/)",
+      "Bash(git commit -m \"docs: Rename .github/README.md to TEMPLATES.md\n\nAvoids confusion with main README.md at repository root.\nGitHub should now display the correct project README.\")",
+      "Bash(git push origin main)"
     ],
     "deny": [],
     "ask": []
