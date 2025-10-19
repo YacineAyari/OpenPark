@@ -1,0 +1,172 @@
+# GitHub Actions CI/CD Template for OpenPark
+# Rename to ci.yml when ready to activate
+# This will run automated checks on every PR
+
+name: OpenPark CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  lint:
+    name: Code Quality (Linting)
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 pylint
+        pip install -r requirements.txt
+
+    - name: Lint with flake8
+      run: |
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Lint with pylint (optional)
+      continue-on-error: true
+      run: |
+        pylint themepark_engine/ --exit-zero
+
+  security:
+    name: Security Check
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install safety
+      run: pip install safety
+
+    - name: Check dependencies for vulnerabilities
+      run: |
+        pip install -r requirements.txt
+        safety check
+
+  test:
+    name: Run Tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Test game launch (smoke test)
+      run: |
+        # Test that the game can be imported without errors
+        python -c "from themepark_engine import engine; print('✅ Engine imports successfully')"
+
+    # Uncomment when unit tests are added
+    # - name: Run unit tests
+    #   run: |
+    #     pip install pytest pytest-cov
+    #     pytest tests/ --cov=themepark_engine --cov-report=xml
+
+    # - name: Upload coverage to Codecov
+    #   uses: codecov/codecov-action@v3
+    #   with:
+    #     file: ./coverage.xml
+
+  label-pr:
+    name: Label Pull Request
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Auto-label based on files changed
+      uses: actions/labeler@v4
+      with:
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+  check-contribution-type:
+    name: Check Contribution Documentation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Check if PR describes contribution method
+      run: |
+        # Check if PR body contains vibe-coding or traditional markers
+        PR_BODY="${{ github.event.pull_request.body }}"
+
+        if echo "$PR_BODY" | grep -iq "vibe.coding\|vibe coding"; then
+          echo "✅ Vibe Coding contribution detected"
+          echo "contribution_type=vibe-coding" >> $GITHUB_ENV
+        elif echo "$PR_BODY" | grep -iq "traditional.code\|code traditionnel"; then
+          echo "✅ Traditional coding contribution detected"
+          echo "contribution_type=traditional" >> $GITHUB_ENV
+        else
+          echo "⚠️ Contribution type not specified in PR description"
+          echo "Please indicate if this is vibe-coding or traditional code"
+        fi
+
+  welcome:
+    name: Welcome New Contributors
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+
+    steps:
+    - name: Post welcome comment
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `🎉 Welcome to OpenPark, @${context.payload.pull_request.user.login}!
+
+            Thank you for your first contribution! 🎢
+
+            Whether you used vibe coding with AI or wrote code manually, we appreciate your work!
+
+            A maintainer will review your PR soon. In the meantime:
+            - ✅ Make sure your code follows the project style
+            - ✅ Test that the game runs without errors
+            - ✅ Add screenshots if your changes are visual
+
+            If you have questions, feel free to ask in the comments!
+
+            Happy coding! 🤖💻`
+          })
+
+# TODO: Add more jobs when needed
+# - Code coverage reports
+# - Performance benchmarks
+# - Screenshot comparisons
+# - Documentation builds

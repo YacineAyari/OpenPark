@@ -1,0 +1,142 @@
+# GitHub Labels Configuration for OpenPark
+# These labels can be automatically created using gh CLI or GitHub API
+
+# Priority Labels
+- name: "priority: high"
+  color: "d73a4a"
+  description: "High priority - should be addressed ASAP"
+
+- name: "priority: medium"
+  color: "fbca04"
+  description: "Medium priority - important but not urgent"
+
+- name: "priority: low"
+  color: "0e8a16"
+  description: "Low priority - nice to have"
+
+# Type Labels
+- name: "type: bug"
+  color: "d73a4a"
+  description: "Something isn't working"
+
+- name: "type: feature"
+  color: "a2eeef"
+  description: "New feature or request"
+
+- name: "type: enhancement"
+  color: "84b6eb"
+  description: "Improvement to existing feature"
+
+- name: "type: documentation"
+  color: "0075ca"
+  description: "Improvements or additions to documentation"
+
+- name: "type: refactor"
+  color: "fbca04"
+  description: "Code refactoring"
+
+# Development Method Labels
+- name: "vibe-coding"
+  color: "ff69b4"
+  description: "Developed using AI assistance (Claude, GPT, etc.)"
+
+- name: "traditional-code"
+  color: "7057ff"
+  description: "Developed manually without AI"
+
+- name: "hybrid"
+  color: "c5def5"
+  description: "Mix of AI-assisted and manual coding"
+
+# Good First Issue Labels
+- name: "good first issue"
+  color: "7057ff"
+  description: "Good for newcomers (human or AI)"
+
+- name: "good for AI"
+  color: "ff69b4"
+  description: "Well-suited for vibe coding / AI development"
+
+- name: "needs manual coding"
+  color: "b60205"
+  description: "Requires human expertise, complex for AI"
+
+# Status Labels
+- name: "status: in progress"
+  color: "fbca04"
+  description: "Currently being worked on"
+
+- name: "status: blocked"
+  color: "d73a4a"
+  description: "Blocked by another issue or dependency"
+
+- name: "status: needs review"
+  color: "0e8a16"
+  description: "Ready for review"
+
+- name: "status: needs testing"
+  color: "1d76db"
+  description: "Needs manual testing"
+
+# Component Labels
+- name: "component: engine"
+  color: "c2e0c6"
+  description: "Related to game engine / main loop"
+
+- name: "component: AI"
+  color: "bfdadc"
+  description: "Guest or employee AI behavior"
+
+- name: "component: rendering"
+  color: "d4c5f9"
+  description: "Oblique projection, rendering, graphics"
+
+- name: "component: UI"
+  color: "fef2c0"
+  description: "User interface, menus, HUD"
+
+- name: "component: economy"
+  color: "c5def5"
+  description: "Money, revenue, costs"
+
+- name: "component: pathfinding"
+  color: "bfd4f2"
+  description: "A* pathfinding and navigation"
+
+# Help Labels
+- name: "help wanted"
+  color: "008672"
+  description: "Extra attention is needed"
+
+- name: "question"
+  color: "d876e3"
+  description: "Further information is requested"
+
+- name: "discussion"
+  color: "cc317c"
+  description: "Discussion or brainstorming needed"
+
+# Special Labels
+- name: "breaking change"
+  color: "b60205"
+  description: "Breaking change - requires migration"
+
+- name: "roadmap"
+  color: "0e8a16"
+  description: "Part of the pre-launch roadmap"
+
+- name: "post-launch"
+  color: "c5def5"
+  description: "Feature for after initial launch"
+
+- name: "duplicate"
+  color: "cfd3d7"
+  description: "This issue or pull request already exists"
+
+- name: "wontfix"
+  color: "ffffff"
+  description: "This will not be worked on"
+
+- name: "invalid"
+  color: "e4e669"
+  description: "This doesn't seem right"

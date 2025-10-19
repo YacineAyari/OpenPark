@@ -1,0 +1,1578 @@
+
+import json, pygame, math
+from pathlib import Path
+from . import assets
+from .map import MapGrid, TILE_WALK, TILE_GRASS, TILE_RIDE_ENTRANCE, TILE_RIDE_EXIT, TILE_RIDE_FOOTPRINT, TILE_QUEUE_PATH, TILE_SHOP_ENTRANCE, TILE_SHOP_FOOTPRINT
+from .pathfinding import astar
+from .agents import Guest
+from .rides import Ride, RideDef, RideEntrance, RideExit
+from .shops import Shop, ShopDef, ShopEntrance
+from .employees import EmployeeDef, Engineer, MaintenanceWorker, SecurityGuard, Mascot
+from .economy import Economy
+from .ui import Toolbar
+from .renderers.iso import IsoRenderer
+from .ui_parts.debug_menu import DebugMenu
+from .queues import SimpleQueueManager
+from .serpent_queue import SerpentQueueManager, Direction, Movement, MovementType
+from .debug import DebugConfig
+from .litter import LitterManager, BinDef, DEFAULT_BIN
+
+DATA = Path(__file__).resolve().parent / 'data'
+
+class Game:
+    def __init__(self):
+        pygame.init()
+        self.screen = pygame.display.set_mode((1280, 800))
+        pygame.display.set_caption('OpenPark — Oblique Mode')
+        self.clock = pygame.time.Clock(); self.font = pygame.font.SysFont('Arial', 16)
+        self.grid = MapGrid(64, 64); self.economy = Economy()
+        self.queue_manager = SimpleQueueManager()
+        self.litter_manager = LitterManager()  # Add litter management system
+        data = json.load(open(DATA/'objects.json','r'))
+        self.ride_defs = {r['id']: RideDef(**r) for r in data.get('rides', [])}
+        self.shop_defs = {s['id']: ShopDef(**s) for s in data.get('shops', [])}
+        self.employee_defs = {e['id']: EmployeeDef(**e) for e in data.get('employees', [])}
+        self.bin_defs = {b['id']: BinDef(**b) for b in data.get('bins', [])}  # Load bin definitions
+        self.proj_presets = [tuple(p) for p in data.get('projection_presets', [(64,32)])]
+        default_proj = tuple(data.get('projection_default', [64,32]))
+        default_tilt = float(data.get('tilt_default', 10.0))
+        self.rides = []; self.shops = []; self.employees = []
+        # Créer des visiteurs avec des positions différentes
+        import random
+        self.guests = []
+        for i in range(8):
+            # Positionner les visiteurs à différents endroits
+            x = random.randint(5, 15) + random.random()
+            y = random.randint(5, 15) + random.random()
+            self.guests.append(Guest(x, y))
+        self.spr_guest = assets.load_image('guest'); self.spr_cache = {}
+        # Oblique tilt default at 10°
+        self.renderer = IsoRenderer(self.screen, self.font, default_proj[0], default_proj[1], oblique_tilt=default_tilt)
+        self.proj_index = max(0, self.proj_presets.index(default_proj) if default_proj in self.proj_presets else 0)
+        self.debug_menu = DebugMenu(self.font, self.proj_presets, self.proj_index, oblique_tilt=default_tilt)
+        self.toolbar = Toolbar(self.font, self.ride_defs, self.shop_defs, self.employee_defs, self.bin_defs)
+        self.dragging=False; self.drag_start=(0,0); self.cam_start=(0,0)
+        self.path_dragging=False; self.last_path_pos=None
+        self.ride_placement_mode = None  # 'ride', 'entrance', 'exit'
+        self.selected_ride = None
+        self.shop_placement_mode = None  # 'shop', 'entrance'
+        self.selected_shop = None
+        self.employee_placement_mode = None
+        self.last_queue_pos = None  # Track last queue tile for orientation
+        self.mouse_direction = 'S'  # Default direction for queue tiles
+        self.last_mouse_pos = None  # Track mouse movement for direction
+        self.serpent_manager = SerpentQueueManager()
+        self.serpent_mode = False  # Toggle for serpent queue placement
+        self.serpent_start_pos = None  # Start position for serpent queue
+        
+        # No test objects - let the game start normally
+
+    def sprite(self, name:str):
+        if name not in self.spr_cache: self.spr_cache[name] = assets.load_image(name)
+        return self.spr_cache[name]
+
+    def _can_place_ride(self, ride_def, gx, gy):
+        """Check if a ride can be placed at the given position"""
+        if not self.grid.in_bounds(gx, gy): return False
+        if not self.grid.in_bounds(gx + ride_def.size[0] - 1, gy + ride_def.size[1] - 1): return False
+        
+        # Check if all tiles in the ride area are grass (not occupied by other rides)
+        for x in range(gx, gx + ride_def.size[0]):
+            for y in range(gy, gy + ride_def.size[1]):
+                if self.grid.get(x, y) != TILE_GRASS:
+                    return False
+        return True
+    
+    def _get_ride_at_position(self, gx, gy):
+        """Get the ride at the given position, if any"""
+        for ride in self.rides:
+            min_x, min_y, max_x, max_y = ride.get_bounds()
+            if min_x <= gx <= max_x and min_y <= gy <= max_y:
+                return ride
+        return None
+    
+    def _mark_ride_footprint(self, ride):
+        """Mark the ride's footprint on the map"""
+        min_x, min_y, max_x, max_y = ride.get_bounds()
+        for x in range(min_x, max_x + 1):
+            for y in range(min_y, max_y + 1):
+                if self.grid.in_bounds(x, y):
+                    self.grid.set(x, y, TILE_RIDE_FOOTPRINT)
+    
+    def _clear_ride_footprint(self, ride):
+        """Clear the ride's footprint from the map"""
+        min_x, min_y, max_x, max_y = ride.get_bounds()
+        for x in range(min_x, max_x + 1):
+            for y in range(min_y, max_y + 1):
+                if self.grid.in_bounds(x, y):
+                    self.grid.set(x, y, TILE_GRASS)
+    
+    def _is_on_ride(self, gx, gy):
+        """Check if a position is on any ride or shop footprint"""
+        return self.grid.get(gx, gy) in (TILE_RIDE_FOOTPRINT, TILE_SHOP_FOOTPRINT)
+    
+    def _can_connect_queue_tile(self, gx, gy):
+        """Check if a queue tile can be placed at this position (connects to existing queue or is first tile)"""
+        # If it's the first queue tile, allow it
+        if self.last_queue_pos is None:
+            return True
+        
+        # Check if it's adjacent to the last placed queue tile
+        lx, ly = self.last_queue_pos
+        if abs(gx - lx) + abs(gy - ly) == 1:  # Adjacent (Manhattan distance = 1)
+            return True
+        
+        # Check if it's adjacent to any existing queue tile
+        for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+            nx, ny = gx + dx, gy + dy
+            if self.grid.in_bounds(nx, ny) and self.grid.get(nx, ny) == TILE_QUEUE_PATH:
+                return True
+        
+        return False
+    
+    def _calculate_mouse_direction(self, current_pos, last_pos):
+        """Calculate direction based on mouse movement"""
+        if last_pos is None:
+            return 'S'  # Default direction
+        
+        dx = current_pos[0] - last_pos[0]
+        dy = current_pos[1] - last_pos[1]
+        
+        # Determine primary direction based on movement
+        if abs(dx) > abs(dy):
+            return 'E' if dx > 0 else 'W'
+        else:
+            return 'S' if dy > 0 else 'N'
+    
+    def _get_queue_tile_connections(self, gx, gy):
+        """Get number of connections for a queue tile"""
+        from .map import TILE_QUEUE_PATH
+        connections = 0
+        for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+            nx, ny = gx + dx, gy + dy
+            if self.grid.in_bounds(nx, ny) and self.grid.get(nx, ny) == TILE_QUEUE_PATH:
+                connections += 1
+        return connections
+    
+    def _get_adjacent_queue_direction(self, gx, gy):
+        """Get the direction to an adjacent queue tile"""
+        from .map import TILE_QUEUE_PATH
+        
+        # Check all four directions for adjacent queue tiles
+        for dx, dy, direction in [(0, 1, 'S'), (0, -1, 'N'), (1, 0, 'E'), (-1, 0, 'W')]:
+            nx, ny = gx + dx, gy + dy
+            if self.grid.in_bounds(nx, ny) and self.grid.get(nx, ny) == TILE_QUEUE_PATH:
+                return direction
+        return None
+    
+    def _get_opposite_direction(self, direction):
+        """Get the opposite direction"""
+        opposites = {'N': 'S', 'S': 'N', 'E': 'W', 'W': 'E'}
+        return opposites.get(direction, 'S')
+    
+    def create_serpent_queue(self, start_x: int, start_y: int, width: int, height: int):
+        """Create a serpent queue in the specified area"""
+        # Convert to Direction enum
+        initial_direction = Direction.EAST
+        
+        # Create serpent pattern
+        movements = self.serpent_manager.placer.create_serpent_pattern(width, height, start_x, start_y)
+        
+        # Place the serpent queue
+        success = self.serpent_manager.place_serpent_queue(start_x, start_y, initial_direction, movements, self.grid)
+        
+        if success:
+            # Update queue system
+            self._update_queue_system()
+            return True
+        
+        return False
+    
+    def create_custom_serpent_queue(self, start_x: int, start_y: int, pattern_string: str):
+        """Create a custom serpent queue from a pattern string"""
+        # Convert to Direction enum
+        initial_direction = Direction.EAST
+        
+        # Create movements from pattern
+        movements = self.serpent_manager.placer.create_custom_pattern(pattern_string)
+        
+        # Place the serpent queue
+        success = self.serpent_manager.place_serpent_queue(start_x, start_y, initial_direction, movements, self.grid)
+        
+        if success:
+            # Update queue system
+            self._update_queue_system()
+            return True
+        
+        return False
+    
+    def _connect_queue_to_ride(self, queue_path, ride):
+        """Connect a queue path to a ride"""
+        queue_path.connected_ride = ride
+        self.queue_manager.ride_queues[ride] = queue_path
+    
+    def _update_queue_system(self):
+        """Update the queue system - find and connect queue paths to rides"""
+        # Update the simple queue system
+        # DebugConfig.log('engine', "Updating queue system")  # Too frequent
+        self.queue_manager.update_queue_system(self.grid)
+        
+        # Connect queues to rides based on proximity to entrances
+        DebugConfig.log('engine', f"Connecting queues to rides, found {len(self.rides)} rides")
+        for queue_path in self.queue_manager.queue_paths:
+            if not queue_path.connected_ride:
+                DebugConfig.log('engine', f"Checking unconnected queue path with {len(queue_path.tiles)} tiles")
+                # Find the closest ride entrance
+                for ride in self.rides:
+                    DebugConfig.log('engine', f"Checking ride {ride.defn.name}")
+                    if ride.entrance:
+                        entrance_pos = (ride.entrance.x, ride.entrance.y)
+                        DebugConfig.log('engine', f"Ride {ride.defn.name} has entrance at {entrance_pos}")
+                        # Check if queue path is connected to ride entrance
+                        for tile in queue_path.tiles:
+                            tile_pos = (tile.x, tile.y)
+                            if tile_pos == entrance_pos:
+                                DebugConfig.log('engine', f"Connecting queue at {tile_pos} to ride {ride.defn.name} (exact match)")
+                                self.queue_manager.connect_queue_to_ride(queue_path, ride)
+                                break
+                        
+                        # Check if queue path is adjacent to ride entrance
+                        for tile in queue_path.tiles:
+                            tile_pos = (tile.x, tile.y)
+                            distance = abs(tile_pos[0] - entrance_pos[0]) + abs(tile_pos[1] - entrance_pos[1])
+                            if distance == 1:  # Adjacent
+                                DebugConfig.log('engine', f"Connecting queue at {tile_pos} to ride {ride.defn.name} (adjacent)")
+                                self.queue_manager.connect_queue_to_ride(queue_path, ride)
+                                break
+                    else:
+                        DebugConfig.log('engine', f"Ride {ride.defn.name} has no entrance")
+    
+    def _find_ride_for_guest(self, guest):
+        """Find a ride for a guest to queue for"""
+        DebugConfig.log('engine', f"Looking for ride for guest {guest.id}")
+        # Look for rides with available queue space and connected queues
+        # Randomize ride selection to avoid always choosing the same ride
+        import random
+        available_rides = []
+        for ride in self.rides:
+            DebugConfig.log('engine', f"Checking ride {ride.defn.name}")
+            if ride.entrance and ride.exit:
+                DebugConfig.log('engine', f"Ride {ride.defn.name} has entrance and exit")
+                queue_path = self.queue_manager.get_queue_for_ride(ride)
+                if queue_path and queue_path.can_enter():
+                    DebugConfig.log('engine', "Queue found and can accept visitor")
+                    # Pathfind to the entrance of the queue
+                    queue_entrance = queue_path.get_entrance_position()
+                    if queue_entrance:
+                        DebugConfig.log('engine', f"Queue entrance at {queue_entrance}")
+                        path = astar(self.grid, (guest.grid_x, guest.grid_y), queue_entrance)
+                        if path:
+                            # Add this ride to available rides list
+                            available_rides.append((ride, queue_path, queue_entrance, path))
+                            DebugConfig.log('engine', f"Ride {ride.defn.name} added to available rides")
+                        else:
+                            DebugConfig.log('engine', "No path found to queue entrance")
+                    else:
+                        DebugConfig.log('engine', "No queue entrance found")
+                else:
+                    DebugConfig.log('engine', "No queue or queue cannot accept visitor")
+            else:
+                DebugConfig.log('engine', f"Ride {ride.defn.name} missing entrance or exit")
+        
+        # Select ride based on guest preferences and availability
+        if available_rides:
+            # Score rides based on guest preferences
+            scored_rides = []
+            for ride, queue_path, queue_entrance, path in available_rides:
+                # Calculate preference score (0-1, higher is better)
+                thrill_score = 1.0 - abs(guest.thrill_preference - ride.defn.thrill)
+                nausea_score = 1.0 - abs(guest.nausea_tolerance - ride.defn.nausea)
+                preference_score = (thrill_score + nausea_score) / 2.0
+                
+                # Add some randomness to avoid always choosing the same ride
+                random_factor = random.uniform(0.8, 1.2)
+                final_score = preference_score * random_factor
+                
+                scored_rides.append((final_score, ride, queue_path, queue_entrance, path))
+                DebugConfig.log('engine', f"Ride {ride.defn.name} scored {final_score:.2f} for guest {guest.id} (thrill: {thrill_score:.2f}, nausea: {nausea_score:.2f})")
+            
+            # Select the ride with the highest score
+            scored_rides.sort(key=lambda x: x[0], reverse=True)
+            selected_score, selected_ride, queue_path, queue_entrance, path = scored_rides[0]
+            
+            guest.path = path[1:]
+            guest.target_ride = selected_ride
+            guest.target_queue = queue_path
+            guest.state = "walking_to_queue"
+            DebugConfig.log('engine', f"Guest {guest.id} selected ride {selected_ride.defn.name} (score: {selected_score:.2f}), walking to queue entrance at {queue_entrance}")
+        else:
+            DebugConfig.log('engine', f"No available rides found for guest {guest.id}")
+    
+    def _handle_guest_boarding(self, guest):
+        """Handle guest boarding a ride"""
+        DebugConfig.log('engine', f"Handling boarding for guest {guest.id}")
+        if self.queue_manager.can_visitor_board_ride(guest):
+            DebugConfig.log('engine', f"Guest {guest.id} can board ride")
+            # Board the ride
+            if self.queue_manager.board_visitor_on_ride(guest):
+                DebugConfig.log('engine', f"Guest {guest.id} successfully boarded ride")
+                guest.state = "riding"
+                # The ride will launch automatically when it reaches capacity
+            else:
+                DebugConfig.log('engine', f"Guest {guest.id} failed to board ride")
+        else:
+            DebugConfig.log('engine', f"Guest {guest.id} cannot board ride")
+
+    def handle_events(self):
+        placing = self.toolbar.active
+        hover=None
+        for e in pygame.event.get():
+            if e.type==pygame.QUIT: return False, placing, hover
+            if e.type==pygame.KEYDOWN:
+                if e.key==pygame.K_ESCAPE: return False, placing, hover
+                elif e.key in (pygame.K_EQUALS, pygame.K_PLUS): self.renderer.camera.set_zoom(self.renderer.camera.zoom+0.1); self.renderer._recalc(); self.renderer._rebuild_surfaces()
+                elif e.key==pygame.K_MINUS: self.renderer.camera.set_zoom(self.renderer.camera.zoom-0.1); self.renderer._recalc(); self.renderer._rebuild_surfaces()
+            if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
+                action = self.debug_menu.handle_mouse(e)
+                if action:
+                    if action[0]=='proj':
+                        self.proj_index=action[1]
+                        tw,th=self.proj_presets[self.proj_index]
+                        self.renderer.set_projection(tw,th)
+                    elif action[0]=='tilt_oblique':
+                        self.renderer.set_oblique_tilt(action[1])
+                    elif action[0]=='toggle_arrows':
+                        # L'état est déjà mis à jour dans le debug menu
+                        pass
+                if e.type==pygame.MOUSEMOTION:
+                    # Gérer le survol des boutons de la toolbar et sous-menus
+                    screen_height = self.screen.get_height()
+                    toolbar_y = screen_height - 48
+                    # Vérifier si la souris est dans la toolbar ou ses sous-menus
+                    if e.pos[1] >= toolbar_y or self._is_in_toolbar_area(e.pos, screen_height):
+                        self.toolbar.handle_mouse_move(e.pos, screen_height)
+                if e.type==pygame.MOUSEBUTTONDOWN:
+                    if e.button==2:
+                        self.dragging=True; self.drag_start=e.pos; self.cam_start=(self.renderer.camera.x, self.renderer.camera.y)
+                    elif e.button==1:
+                        gx,gy=self.renderer.screen_to_grid(*e.pos); hover=(gx,gy)
+                        # Vérifier si le clic est dans la toolbar ou ses sous-menus
+                        screen_height = self.screen.get_height()
+                        toolbar_y = screen_height - 48
+                        if e.pos[1] >= toolbar_y or self._is_in_toolbar_area(e.pos, screen_height):
+                            clicked=self.toolbar.handle_click(e.pos, screen_height)
+                            if clicked=='debug_toggle': 
+                                self.debug_menu.toggle()
+                            elif clicked and clicked not in ['paths', 'rides', 'shops', 'employees', 'tools']: 
+                                placing=self.toolbar.active
+                                # Reset placement modes when selecting a new tool
+                                if not placing.startswith('ride_'):
+                                    self.ride_placement_mode = None
+                                    self.selected_ride = None
+                                if not placing.startswith('shop_'):
+                                    self.shop_placement_mode = None
+                                    self.selected_shop = None
+                                if not placing.startswith('employee_'):
+                                    self.employee_placement_mode = None
+                        else:
+                            # Fermer les sous-menus si clic ailleurs
+                            self.toolbar.expanded_group = None
+                            if self.grid.in_bounds(gx,gy):
+                                if placing=='walk_path':
+                                    if not self._is_on_ride(gx, gy):
+                                        self.grid.set(gx,gy,TILE_WALK)
+                                        self.path_dragging=True; self.last_path_pos=(gx,gy)
+                                        # Check shop connections when placing walk paths
+                                        self._update_shop_connections()
+                                elif placing=='queue_path':
+                                    if not self._is_on_ride(gx, gy):
+                                        # Place the queue tile
+                                        self.grid.set(gx,gy,TILE_QUEUE_PATH)
+                                        self.path_dragging=True; self.last_path_pos=(gx,gy)
+                                        
+                                        # Check if this tile is adjacent to an existing queue tile
+                                        adjacent_direction = self._get_adjacent_queue_direction(gx, gy)
+                                        if adjacent_direction:
+                                            # Check if we can orient this waypoint (no conflicts)
+                                            if self.queue_manager.can_orient_waypoint(self.grid, gx, gy, adjacent_direction):
+                                                # Orient this waypoint towards the adjacent tile
+                                                self.queue_manager.orient_queue_waypoint(self.grid, gx, gy, adjacent_direction)
+                                        
+                                        self.last_mouse_pos = e.pos
+                                elif placing.startswith('ride_') and self.ride_placement_mode is None:
+                                    rd=self.ride_defs.get(placing)
+                                    if rd and self._can_place_ride(rd, gx, gy):
+                                        new_ride = Ride(rd, gx, gy)
+                                        self.rides.append(new_ride)
+                                        self.economy.add_expense(rd.build_cost)
+                                        # Mark the ride footprint on the map
+                                        self._mark_ride_footprint(new_ride)
+                                        # Force queue system update to connect nearby queues
+                                        self._update_queue_system()
+                                        # Enter entrance placement mode
+                                        self.ride_placement_mode = 'entrance'
+                                        self.selected_ride = new_ride
+                                        placing = 'place_entrance'
+                                elif placing.startswith('shop_') and self.shop_placement_mode is None:
+                                    sd=self.shop_defs.get(placing)
+                                    if sd and self._can_place_shop(sd, gx, gy):
+                                        new_shop = Shop(sd, gx, gy)
+                                        self.shops.append(new_shop)
+                                        self.economy.add_expense(sd.build_cost)
+                                        # Mark the shop footprint on the map
+                                        self._mark_shop_footprint(new_shop)
+                                        # Enter entrance placement mode
+                                        self.shop_placement_mode = 'entrance'
+                                        self.selected_shop = new_shop
+                                        placing = 'place_shop_entrance'
+                                elif self.ride_placement_mode == 'entrance' and self.selected_ride:
+                                    if self.selected_ride.can_place_entrance(gx, gy):
+                                        self.selected_ride.place_entrance(gx, gy)
+                                        self.grid.set(gx, gy, TILE_RIDE_ENTRANCE)
+                                        self.economy.add_expense(self.selected_ride.defn.entrance_cost)
+                                        # Update queue system to connect to this entrance
+                                        self._update_queue_system()
+                                        # Enter exit placement mode
+                                        self.ride_placement_mode = 'exit'
+                                elif self.ride_placement_mode == 'exit' and self.selected_ride:
+                                    if self.selected_ride.can_place_exit(gx, gy):
+                                        self.selected_ride.place_exit(gx, gy)
+                                        self.grid.set(gx, gy, TILE_RIDE_EXIT)
+                                        self.economy.add_expense(self.selected_ride.defn.exit_cost)
+                                        # Exit placement mode
+                                        self.ride_placement_mode = None
+                                        self.selected_ride = None
+                                elif self.shop_placement_mode == 'entrance' and self.selected_shop:
+                                    if self._can_place_shop_entrance(self.selected_shop, gx, gy):
+                                        entrance = ShopEntrance(self.selected_shop.defn.id, gx, gy, 'N')
+                                        self.selected_shop.entrance = entrance
+                                        self.grid.set(gx, gy, TILE_SHOP_ENTRANCE)
+                                        self.economy.add_expense(self.selected_shop.defn.entrance_cost)
+                                        # Check if entrance is connected to a walk path
+                                        self._check_shop_path_connection(self.selected_shop)
+                                        # Exit placement mode
+                                        self.shop_placement_mode = None
+                                        self.selected_shop = None
+                                elif placing.startswith('employee_'):
+                                    # Handle employee placement
+                                    employee_def = self.employee_defs.get(placing)
+                                    if employee_def:
+                                        # Check placement restrictions based on employee type
+                                        can_place = False
+                                        if employee_def.type == 'security':
+                                            # Security guards can only be placed on paths
+                                            can_place = self.grid.get(gx, gy) == TILE_WALK
+                                        elif employee_def.type == 'maintenance':
+                                            # Maintenance workers can be placed on paths or grass
+                                            can_place = self.grid.get(gx, gy) in [TILE_WALK, TILE_GRASS]
+                                        elif employee_def.type == 'mascot':
+                                            # Mascots can be placed on paths or queue paths
+                                            can_place = self.grid.get(gx, gy) in [TILE_WALK, TILE_QUEUE_PATH]
+                                        else:  # engineer
+                                            # Engineers can be placed anywhere
+                                            can_place = True
+                                        
+                                        if can_place:
+                                            # Create appropriate employee type
+                                            if employee_def.type == 'engineer':
+                                                employee = Engineer(employee_def, gx, gy)
+                                            elif employee_def.type == 'maintenance':
+                                                employee = MaintenanceWorker(employee_def, gx, gy)
+                                                # Set placement type for maintenance worker
+                                                employee.set_placement_type(self.grid.get(gx, gy))
+                                            elif employee_def.type == 'security':
+                                                employee = SecurityGuard(employee_def, gx, gy)
+                                            elif employee_def.type == 'mascot':
+                                                employee = Mascot(employee_def, gx, gy)
+                                            else:
+                                                continue
+                                            
+                                            self.employees.append(employee)
+                                            self.economy.add_expense(employee_def.salary)  # Pay first hour
+                                            DebugConfig.log('engine', f"Placed {employee_def.name} at ({gx}, {gy})")
+                                elif placing.startswith('bin_'):
+                                    # Handle bin placement
+                                    bin_def = self.bin_defs.get(placing)
+                                    if bin_def:
+                                        # Bins must be placed on GRASS adjacent to WALK
+                                        if self.grid.get(gx, gy) == TILE_GRASS:
+                                            # Check if adjacent to a walk path
+                                            adjacent_to_walk = False
+                                            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                                                nx, ny = gx + dx, gy + dy
+                                                if self.grid.in_bounds(nx, ny) and self.grid.get(nx, ny) == TILE_WALK:
+                                                    adjacent_to_walk = True
+                                                    break
+                                            
+                                            if adjacent_to_walk:
+                                                # Check if there's already a bin here
+                                                existing_bin = self.litter_manager.get_bin_at(gx, gy)
+                                                if not existing_bin:
+                                                    bin_obj = self.litter_manager.add_bin(bin_def, gx, gy)
+                                                    if bin_obj:
+                                                        self.economy.add_expense(bin_def.cost)
+                                                        DebugConfig.log('engine', f"Placed {bin_def.name} at ({gx}, {gy}) for ${bin_def.cost}")
+                                                else:
+                                                    DebugConfig.log('engine', f"Bin already exists at ({gx}, {gy})")
+                                            else:
+                                                DebugConfig.log('engine', f"Cannot place bin at ({gx}, {gy}) - not adjacent to walk path")
+                                        else:
+                                            DebugConfig.log('engine', f"Cannot place bin at ({gx}, {gy}) - must be on grass")
+                    elif e.button==3:
+                        gx,gy=self.renderer.screen_to_grid(*e.pos); hover=(gx,gy)
+                        if self.grid.in_bounds(gx,gy):
+                            # Check if clicking on a ride
+                            ride = self._get_ride_at_position(gx, gy)
+                            if ride:
+                                # Remove the ride and clear its footprint
+                                self._clear_ride_footprint(ride)
+                                self.rides.remove(ride)
+                                # Clear entrance and exit tiles
+                                if ride.entrance:
+                                    self.grid.set(ride.entrance.x, ride.entrance.y, TILE_GRASS)
+                                if ride.exit:
+                                    self.grid.set(ride.exit.x, ride.exit.y, TILE_GRASS)
+                                # Reset placement mode if this was the selected ride
+                                if self.selected_ride == ride:
+                                    self.ride_placement_mode = None
+                                    self.selected_ride = None
+                            # Check if clicking on a shop
+                            shop = self._get_shop_at_position(gx, gy)
+                            if shop:
+                                # Remove shop footprint
+                                self._clear_shop_footprint(shop)
+                                # Remove shop entrance if exists
+                                if shop.entrance:
+                                    self.grid.set(shop.entrance.x, shop.entrance.y, TILE_GRASS)
+                                # Reset placement mode if this was the selected shop
+                                if self.selected_shop == shop:
+                                    self.shop_placement_mode = None
+                                    self.selected_shop = None
+                            # Check if clicking on an employee
+                            employee = self._get_employee_at_position(gx, gy)
+                            if employee:
+                                self.employees.remove(employee)
+                            else:
+                                # Check if clicking on a queue tile
+                                if self.grid.get(gx, gy) == TILE_QUEUE_PATH:
+                                    # Remove queue waypoint and reorient adjacent waypoints
+                                    self.queue_manager.remove_queue_waypoint(self.grid, gx, gy)
+                                    self.grid.set(gx,gy,TILE_GRASS)
+                                else:
+                                    # Regular tile clearing
+                                    self.grid.set(gx,gy,TILE_GRASS)
+                elif e.type==pygame.MOUSEBUTTONUP:
+                    if e.button==2: self.dragging=False
+                    elif e.button==1: 
+                        self.path_dragging=False; 
+                        self.last_path_pos=None
+                        self.last_queue_pos=None
+                        self.last_mouse_pos=None
+                elif e.type==pygame.MOUSEMOTION:
+                    if self.dragging:
+                        dx=e.pos[0]-self.drag_start[0]
+                        dy=e.pos[1]-self.drag_start[1]
+                        self.renderer.camera.x=self.cam_start[0]-dx
+                        self.renderer.camera.y=self.cam_start[1]-dy
+                    elif self.path_dragging and (placing=='walk_path' or placing=='queue_path'):
+                        gx,gy=self.renderer.screen_to_grid(*e.pos)
+                        if self.grid.in_bounds(gx,gy) and (gx,gy) != self.last_path_pos and not self._is_on_ride(gx, gy):
+                            if placing=='walk_path': 
+                                self.grid.set(gx,gy,TILE_WALK)
+                                self.last_path_pos=(gx,gy)
+                            elif placing=='queue_path':
+                                # Place queue tile during drag
+                                self.grid.set(gx,gy,TILE_QUEUE_PATH)
+                                self.last_path_pos=(gx,gy)
+                                
+                                # Check if this tile is adjacent to an existing queue tile
+                                adjacent_direction = self._get_adjacent_queue_direction(gx, gy)
+                                if adjacent_direction:
+                                    # Check if we can orient this waypoint (no conflicts)
+                                    if self.queue_manager.can_orient_waypoint(self.grid, gx, gy, adjacent_direction):
+                                        # Orient this waypoint towards the adjacent tile
+                                        self.queue_manager.orient_queue_waypoint(self.grid, gx, gy, adjacent_direction)
+                                
+                                self.last_mouse_pos = e.pos
+        # keyboard pan
+        keys=pygame.key.get_pressed(); sp=600*self.clock.get_time()/1000.0
+        if keys[pygame.K_a] or keys[pygame.K_LEFT]: self.renderer.camera.pan(-sp,0)
+        if keys[pygame.K_d] or keys[pygame.K_RIGHT]: self.renderer.camera.pan(+sp,0)
+        if keys[pygame.K_w] or keys[pygame.K_UP]: self.renderer.camera.pan(0,-sp)
+        if keys[pygame.K_s] or keys[pygame.K_DOWN]: self.renderer.camera.pan(0,+sp)
+        mx,my=pygame.mouse.get_pos(); hover=self.renderer.screen_to_grid(mx,my)
+        return True, placing, hover
+
+    def update(self, dt):
+        # Update queue system
+        self._update_queue_system()
+        
+        # Update litter manager
+        self.litter_manager.tick(dt)
+        
+        # Update guests
+        pts=[(x,y) for y in range(self.grid.height) for x in range(self.grid.width) if self.grid.walkable(x,y)]
+        import random
+        # DebugConfig.log('engine', f"Processing {len(self.guests)} guests")  # Too frequent
+        for g in self.guests:
+            # Track guest state before tick
+            previous_state = g.state
+            previous_shop = g.current_shop
+
+            g.tick(dt)
+
+            # Check if guest just finished shopping (state changed from SHOPPING to something else)
+            if previous_state == "shopping" and g.state != "shopping" and previous_shop:
+                # Guest finished shopping, add revenue
+                shop_price = previous_shop.defn.base_price
+                self.economy.add_income(shop_price)
+                DebugConfig.log('engine', f"Guest {g.id} finished shopping at {previous_shop.defn.name}, revenue: ${shop_price}")
+
+                # Apply shopping satisfaction bonus
+                g.apply_shopping_bonus()
+
+            # Check if guest just finished riding (state changed from RIDING to EXITING)
+            if previous_state == "riding" and g.state == "exiting":
+                # Apply ride completion bonus
+                g.apply_ride_completion_bonus()
+
+            # Check if guest just joined a queue (state changed to QUEUING)
+            if g.state == "queuing" and previous_state != "queuing" and g.current_queue:
+                queue_length = len(g.current_queue.visitors)
+                g.apply_short_queue_bonus(queue_length)
+                g.apply_long_queue_penalty(queue_length)
+
+            # Check if guest successfully used bin (state changed from USING_BIN to WANDERING)
+            if previous_state == "using_bin" and g.state == "wandering" and not g.has_litter:
+                g.apply_bin_use_bonus()
+        
+        # Update employees
+        for employee in self.employees:
+            employee.tick(dt)
+            # Pay salary every hour (3600 seconds)
+            if employee.salary_timer >= 3600.0:
+                self.economy.cash -= employee.defn.salary
+                employee.salary_timer = 0.0
+                DebugConfig.log('engine', f"Paid salary to {employee.defn.name}: ${employee.defn.salary}")
+        
+        # Assign maintenance workers to litter and gardening
+        self._assign_maintenance_workers_to_litter()
+        self._assign_maintenance_workers_to_gardening()
+
+        # Assign security guards to patrol
+        self._assign_security_guards_to_patrol()
+
+        # Assign mascots to crowds
+        self._assign_mascots_to_crowds()
+
+        # Apply employee effects on guests
+        self._apply_employee_effects_on_guests()
+
+        # Apply litter proximity penalties
+        self._apply_litter_proximity_penalties()
+
+        # Apply park cleanliness bonus
+        self._apply_park_cleanliness_bonus()
+
+        # Update rides
+        for ride in self.rides:
+            ride.tick(dt)
+        
+        # Assign engineers to broken rides
+        self._assign_engineers_to_broken_rides()
+        
+        # Handle broken rides - evacuate queues
+        self._handle_broken_rides()
+        
+        # Debug: Check for stuck visitors in rides
+        for ride in self.rides:
+            if len(ride.current_visitors) > 0:
+                DebugConfig.log('engine', f"Ride {ride.defn.name} has {len(ride.current_visitors)} visitors: {[v.id for v in ride.current_visitors]}")
+        
+        # Debug: Check rides status (only if debug enabled)
+        if DebugConfig.RIDES and len(self.rides) > 0:
+            DebugConfig.log('engine', f"Found {len(self.rides)} rides: {[r.defn.name for r in self.rides]}")
+            for ride in self.rides:
+                DebugConfig.log('engine', f"Ride {ride.defn.name} at ({ride.x}, {ride.y}), broken: {ride.is_broken}, being_repaired: {ride.being_repaired}")
+        
+        for g in self.guests:
+            # PRIORITY: Handle litter first if timer expired and guest is in a "free" state
+            # Allow litter dropping in wandering, walking_to_queue, walking_to_shop states
+            if (g.has_litter and 
+                g.litter_hold_timer >= g.litter_hold_duration and
+                g.state in ["wandering", "walking_to_queue", "walking_to_shop"]):
+                DebugConfig.log('litter', f"Guest {g.id} litter hold timer expired ({g.litter_hold_timer:.1f}/{g.litter_hold_duration:.1f}), handling litter at ({g.grid_x}, {g.grid_y}) in state {g.state}")
+                self._handle_guest_litter(g)
+                # After handling litter, skip other processing this tick to avoid immediate redirection
+                continue
+            
+            if g.state == "wandering" and not g.path and pts:
+                goal=random.choice(pts); p=astar(self.grid,(g.grid_x,g.grid_y),goal)
+                if p: g.path=p[1:]
+            elif g.state == "walking_to_queue":
+                # Guest is walking to queue, no additional pathfinding needed
+                DebugConfig.log('engine', f"Engine processing guest {g.id} walking to queue")
+                pass
+            elif g.state == "walking_to_shop":
+                # Guest is walking to shop, no additional pathfinding needed
+                DebugConfig.log('engine', f"Engine processing guest {g.id} walking to shop")
+                pass
+            elif g.state == "shopping":
+                # Guest is shopping, no additional processing needed
+                DebugConfig.log('engine', f"Engine processing guest {g.id} shopping")
+                pass
+            elif g.state == "wandering":
+                # Look for rides or shops to visit (only if not handling litter)
+                DebugConfig.log('engine', f"Engine processing wandering guest {g.id}")
+                self._find_attraction_for_guest(g)
+            elif g.state == "queuing":
+                # Check if guest can board the ride
+                DebugConfig.log('engine', f"Engine processing queuing guest {g.id}")
+                # Check if guest is actually in a queue
+                DebugConfig.log('engine', f"Guest {g.id} queuing state check - current_queue: {g.current_queue}, visitors in queue: {len(g.current_queue.visitors) if g.current_queue else 'None'}, queue_position: {g.queue_position}")
+                if not g.current_queue:
+                    DebugConfig.log('engine', f"Guest {g.id} is in queuing state but has no current_queue, resetting to wandering")
+                    g.state = "wandering"
+                    g.current_queue = None
+                    g.target_queue = None
+                    g.target_ride = None
+                elif g not in g.current_queue.visitors:
+                    DebugConfig.log('engine', f"Guest {g.id} is in queuing state but not in queue visitors list, resetting to wandering")
+                    g.state = "wandering"
+                    g.current_queue = None
+                    g.target_queue = None
+                    g.target_ride = None
+                else:
+                    self._handle_guest_boarding(g)
+        
+        # Update rides
+        for r in self.rides: r.tick(dt)
+
+    def _is_in_toolbar_area(self, pos, screen_height):
+        """Vérifier si la position est dans la zone de la toolbar ou ses sous-menus"""
+        toolbar_y = screen_height - 48
+        
+        # Vérifier si un sous-menu est ouvert
+        if self.toolbar.expanded_group and self.toolbar.expanded_group in self.toolbar.groups:
+            group_data = self.toolbar.groups[self.toolbar.expanded_group]
+            items = group_data['items']
+            
+            if items:
+                group_index = list(self.toolbar.groups.keys()).index(self.toolbar.expanded_group)
+                submenu_x = 12 + group_index * 150
+                submenu_y = toolbar_y - len(items) * 40 - 10
+                submenu_width = 200
+                submenu_height = len(items) * 40 + 10
+                
+                # Vérifier si la position est dans le sous-menu
+                if (submenu_x <= pos[0] <= submenu_x + submenu_width and 
+                    submenu_y <= pos[1] <= submenu_y + submenu_height):
+                    return True
+        
+        return False
+
+    def _can_place_shop(self, shop_def, x, y):
+        """Vérifier si un shop peut être placé à la position donnée"""
+        width, height = shop_def.size
+        
+        # Vérifier que toutes les tuiles sont dans les limites et libres
+        for dx in range(width):
+            for dy in range(height):
+                gx, gy = x + dx, y + dy
+                if not self.grid.in_bounds(gx, gy):
+                    return False
+                if self.grid.get(gx, gy) != TILE_GRASS:
+                    return False
+        
+        return True
+
+    def _mark_shop_footprint(self, shop):
+        """Marquer l'empreinte du shop sur la grille"""
+        width, height = shop.defn.size
+        for dx in range(width):
+            for dy in range(height):
+                gx, gy = shop.x + dx, shop.y + dy
+                self.grid.set(gx, gy, TILE_SHOP_FOOTPRINT)
+
+    def _can_place_shop_entrance(self, shop, x, y):
+        """Vérifier si une entrée de shop peut être placée à la position donnée"""
+        width, height = shop.defn.size
+        
+        # L'entrée doit être adjacente au shop (pas dans les coins extérieurs)
+        shop_left = shop.x
+        shop_right = shop.x + width - 1
+        shop_top = shop.y
+        shop_bottom = shop.y + height - 1
+        
+        # Vérifier que l'entrée est adjacente au shop
+        adjacent = False
+        if x == shop_left - 1 and shop_top <= y <= shop_bottom:  # À gauche
+            adjacent = True
+        elif x == shop_right + 1 and shop_top <= y <= shop_bottom:  # À droite
+            adjacent = True
+        elif y == shop_top - 1 and shop_left <= x <= shop_right:  # En haut
+            adjacent = True
+        elif y == shop_bottom + 1 and shop_left <= x <= shop_right:  # En bas
+            adjacent = True
+        
+        if not adjacent:
+            return False
+        
+        # Vérifier que la position est libre
+        if not self.grid.in_bounds(x, y) or self.grid.get(x, y) != TILE_GRASS:
+            return False
+        
+        return True
+
+    def _check_shop_path_connection(self, shop):
+        """Vérifier si l'entrée du shop est connectée à un chemin"""
+        if not shop.entrance:
+            return
+        
+        # Vérifier les tuiles adjacentes à l'entrée
+        entrance_x, entrance_y = shop.entrance.x, shop.entrance.y
+        adjacent_positions = [
+            (entrance_x - 1, entrance_y),  # Gauche
+            (entrance_x + 1, entrance_y),  # Droite
+            (entrance_x, entrance_y - 1),  # Haut
+            (entrance_x, entrance_y + 1),  # Bas
+        ]
+        
+        for gx, gy in adjacent_positions:
+            if self.grid.in_bounds(gx, gy) and self.grid.get(gx, gy) == TILE_WALK:
+                shop.connected_to_path = True
+                return
+        
+        shop.connected_to_path = False
+
+    def _is_on_shop(self, x, y):
+        """Vérifier si une position est sur un shop"""
+        return self.grid.get(x, y) == TILE_SHOP_FOOTPRINT
+
+    def _get_shop_at_position(self, x, y):
+        """Obtenir le shop à une position donnée"""
+        for shop in self.shops:
+            width, height = shop.defn.size
+            if (shop.x <= x < shop.x + width and 
+                shop.y <= y < shop.y + height):
+                return shop
+        return None
+
+    def _clear_shop_footprint(self, shop):
+        """Effacer l'empreinte du shop de la grille"""
+        width, height = shop.defn.size
+        for dx in range(width):
+            for dy in range(height):
+                gx, gy = shop.x + dx, shop.y + dy
+                self.grid.set(gx, gy, TILE_GRASS)
+
+    def _update_shop_connections(self):
+        """Mettre à jour les connexions de tous les shops"""
+        for shop in self.shops:
+            self._check_shop_path_connection(shop)
+
+    def _find_attraction_for_guest(self, guest):
+        """Trouver une attraction (ride ou shop) pour un visiteur"""
+        import random
+        
+        # 20% chance to just wander without targeting anything
+        if random.random() < 0.2:
+            DebugConfig.log('engine', f"Guest {guest.id} chose to just wander")
+            return
+        
+        # Probabilité de choisir un shop vs une attraction (30% shops, 70% rides)
+        if random.random() < 0.3:
+            # Chercher un shop
+            available_shops = []
+            for shop in self.shops:
+                if shop.entrance and shop.connected_to_path:
+                    shop_entrance = (shop.entrance.x, shop.entrance.y)
+                    path = astar(self.grid, (guest.grid_x, guest.grid_y), shop_entrance)
+                    if path:
+                        available_shops.append((shop, shop_entrance, path))
+            
+            if available_shops:
+                # Choisir un shop au hasard
+                selected_shop, shop_entrance, path = random.choice(available_shops)
+                guest.path = path[1:]
+                guest.target_shop = selected_shop
+                guest.state = "walking_to_shop"
+                DebugConfig.log('engine', f"Guest {guest.id} selected shop {selected_shop.defn.name}, walking to entrance at {shop_entrance}")
+                return
+        
+        # Chercher une attraction
+        available_rides = []
+        for ride in self.rides:
+            if ride.entrance and ride.exit:
+                queue_path = self.queue_manager.get_queue_for_ride(ride)
+                if queue_path and queue_path.can_enter():
+                    queue_entrance = queue_path.get_entrance_position()
+                    if queue_entrance:
+                        path = astar(self.grid, (guest.grid_x, guest.grid_y), queue_entrance)
+                        if path:
+                            available_rides.append((ride, queue_path, queue_entrance, path))
+        
+        if available_rides:
+            # Calculer les scores basés sur les préférences du visiteur
+            scored_rides = []
+            for ride, queue_path, queue_entrance, path in available_rides:
+                thrill_score = 1.0 - abs(guest.thrill_preference - ride.defn.thrill)
+                nausea_score = 1.0 - abs(guest.nausea_tolerance - ride.defn.nausea)
+                preference_score = (thrill_score + nausea_score) / 2.0
+                random_factor = random.uniform(0.8, 1.2)
+                final_score = preference_score * random_factor
+                scored_rides.append((final_score, ride, queue_path, queue_entrance, path))
+            
+            scored_rides.sort(key=lambda x: x[0], reverse=True)
+            selected_score, selected_ride, queue_path, queue_entrance, path = scored_rides[0]
+            
+            guest.path = path[1:]
+            guest.target_ride = selected_ride
+            guest.target_queue = queue_path
+            guest.state = "walking_to_queue"
+            DebugConfig.log('engine', f"Guest {guest.id} selected ride {selected_ride.defn.name} (score: {selected_score:.2f}), walking to queue entrance at {queue_entrance}")
+        else:
+            DebugConfig.log('engine', f"No available attractions found for guest {guest.id}")
+
+    def draw(self, hover=None):
+        self.screen.fill((20,60,90))
+        # Supprimer l'ancienne barre en haut
+        # pygame.draw.rect(self.screen,(30,30,30),(0,0,self.screen.get_width(),48))
+        self.renderer.draw_map(self.grid)
+        
+        # Dessiner les flèches de queue si activées
+        if self.debug_menu.show_queue_arrows:
+            queue_paths = self.queue_manager.find_queue_paths(self.grid)
+            self.renderer.draw_queue_arrows(queue_paths, True)
+        
+        # Dessiner les points cardinaux et la légende des directions
+        self.renderer.draw_cardinal_points()
+        self.renderer.draw_direction_legend()
+        
+        objs=[]
+        for r in self.rides: 
+            objs.append((self.sprite(r.defn.sprite),(r.x,r.y)))
+            # Indicateur visuel si l'attraction est en panne
+            if r.is_broken:
+                # Dessiner un indicateur rouge pour montrer que l'attraction est en panne
+                width, height = r.defn.size
+                center_x = r.x + width / 2 - 0.5
+                center_y = r.y + height / 2 - 0.5
+                indicator_x = center_x + width / 2 - 0.5
+                indicator_y = center_y - height / 2 + 0.5
+                # Utiliser un sprite rouge pour l'indicateur de panne
+                broken_sprite = self.sprite('ride_broken')
+                broken_sprite = pygame.transform.scale(broken_sprite, (16, 16))
+                objs.append((broken_sprite,(indicator_x,indicator_y)))
+        for s in self.shops: 
+            # Centrer le sprite du shop sur son empreinte
+            width, height = s.defn.size
+            center_x = s.x + width / 2 - 0.5
+            center_y = s.y + height / 2 - 0.5
+            objs.append((self.sprite(s.defn.sprite),(center_x,center_y)))
+            
+            # Dessiner l'entrée du shop si elle existe
+            if s.entrance:
+                objs.append((self.sprite('shop_entrance'),(s.entrance.x,s.entrance.y)))
+            
+            # Indicateur visuel si le shop n'est pas connecté à un chemin
+            if s.entrance and not s.connected_to_path:
+                # Dessiner un indicateur rouge pour montrer que le shop n'est pas accessible
+                indicator_x = center_x + width / 2 - 0.5
+                indicator_y = center_y - height / 2 + 0.5
+                # Utiliser un sprite plus grand pour l'indicateur
+                disconnected_sprite = self.sprite('shop_disconnected')
+                # Redimensionner pour le rendre plus visible
+                disconnected_sprite = pygame.transform.scale(disconnected_sprite, (16, 16))
+                objs.append((disconnected_sprite,(indicator_x,indicator_y)))
+        # Render guests with satisfaction indicators
+        for g in self.guests:
+            objs.append((self.spr_guest,(g.x,g.y)))  # Utiliser les positions flottantes pour le rendu
+
+            # Add satisfaction indicator above guest
+            satisfaction_color = self._get_satisfaction_color(g.satisfaction)
+            indicator_surf = pygame.Surface((10, 10), pygame.SRCALPHA)
+            pygame.draw.circle(indicator_surf, satisfaction_color, (5, 5), 4)
+            pygame.draw.circle(indicator_surf, (255, 255, 255), (5, 5), 4, 1)  # White border
+            indicator_x = g.x + 0.5
+            indicator_y = g.y - 0.6
+            objs.append((indicator_surf,(indicator_x,indicator_y)))
+
+        for employee in self.employees:
+            employee_sprite = self.sprite(employee.defn.sprite)
+            objs.append((employee_sprite,(employee.x,employee.y)))
+            # Indicateur visuel si l'employé travaille ou se déplace
+            indicator_x = employee.x + 0.5
+            indicator_y = employee.y - 0.5
+
+            if employee.state == "working":
+                # Dessiner un indicateur vert pour montrer que l'employé travaille
+                working_sprite = self.sprite('employee_working')
+                working_sprite = pygame.transform.scale(working_sprite, (12, 12))
+                objs.append((working_sprite,(indicator_x,indicator_y)))
+            elif employee.state == "moving_to_ride":
+                # Dessiner un indicateur bleu pour montrer que l'ingénieur se déplace
+                moving_sprite = self.sprite('employee_moving')
+                moving_sprite = pygame.transform.scale(moving_sprite, (12, 12))
+                objs.append((moving_sprite,(indicator_x,indicator_y)))
+            elif employee.state == "moving_to_litter":
+                # Indicateur orange pour déplacement vers détritus
+                litter_moving_sprite = self.sprite('employee_moving')  # Utilise le même sprite mais on peut le colorer
+                litter_moving_sprite = pygame.transform.scale(litter_moving_sprite, (12, 12))
+                # Teinter en orange
+                litter_moving_sprite = litter_moving_sprite.copy()
+                litter_moving_sprite.fill((255, 165, 0, 255), special_flags=pygame.BLEND_RGBA_MULT)
+                objs.append((litter_moving_sprite,(indicator_x,indicator_y)))
+            elif employee.state == "cleaning":
+                # Indicateur vert vif pour nettoyage
+                cleaning_sprite = self.sprite('employee_working')
+                cleaning_sprite = pygame.transform.scale(cleaning_sprite, (12, 12))
+                # Teinter en vert vif
+                cleaning_sprite = cleaning_sprite.copy()
+                cleaning_sprite.fill((0, 255, 0, 255), special_flags=pygame.BLEND_RGBA_MULT)
+                objs.append((cleaning_sprite,(indicator_x,indicator_y)))
+            elif employee.state == "moving_to_garden":
+                # Indicateur bleu-vert pour déplacement vers jardin
+                garden_moving_sprite = self.sprite('employee_moving')
+                garden_moving_sprite = pygame.transform.scale(garden_moving_sprite, (12, 12))
+                # Teinter en cyan
+                garden_moving_sprite = garden_moving_sprite.copy()
+                garden_moving_sprite.fill((0, 255, 255, 255), special_flags=pygame.BLEND_RGBA_MULT)
+                objs.append((garden_moving_sprite,(indicator_x,indicator_y)))
+            elif employee.state == "gardening":
+                # Indicateur vert nature pour jardinage
+                gardening_sprite = self.sprite('employee_working')
+                gardening_sprite = pygame.transform.scale(gardening_sprite, (12, 12))
+                # Teinter en vert nature
+                gardening_sprite = gardening_sprite.copy()
+                gardening_sprite.fill((34, 139, 34, 255), special_flags=pygame.BLEND_RGBA_MULT)
+                objs.append((gardening_sprite,(indicator_x,indicator_y)))
+            elif employee.state == "mowing":
+                # Indicateur vert clair pour tonte de pelouse
+                mowing_sprite = self.sprite('employee_working')
+                mowing_sprite = pygame.transform.scale(mowing_sprite, (12, 12))
+                # Teinter en vert clair (lawn green)
+                mowing_sprite = mowing_sprite.copy()
+                mowing_sprite.fill((124, 252, 0, 255), special_flags=pygame.BLEND_RGBA_MULT)
+                objs.append((mowing_sprite,(indicator_x,indicator_y)))
+            elif employee.state == "patrolling":
+                # Indicateur jaune pour patrouille (maintenance workers)
+                patrol_sprite = self.sprite('employee_moving')
+                patrol_sprite = pygame.transform.scale(patrol_sprite, (12, 12))
+                # Teinter en jaune
+                patrol_sprite = patrol_sprite.copy()
+                patrol_sprite.fill((255, 255, 0, 255), special_flags=pygame.BLEND_RGBA_MULT)
+                objs.append((patrol_sprite,(indicator_x,indicator_y)))
+
+            # Security Guard specific indicators
+            from .employees import SecurityGuard, Mascot
+            if isinstance(employee, SecurityGuard):
+                if employee.state == "patrolling":
+                    # Indicateur bleu pour patrouille de sécurité
+                    security_sprite = self.sprite('employee_working')
+                    security_sprite = pygame.transform.scale(security_sprite, (12, 12))
+                    # Teinter en bleu
+                    security_sprite = security_sprite.copy()
+                    security_sprite.fill((0, 100, 255, 255), special_flags=pygame.BLEND_RGBA_MULT)
+                    objs.append((security_sprite,(indicator_x,indicator_y)))
+
+            # Mascot specific indicators
+            if isinstance(employee, Mascot):
+                if employee.state == "moving_to_crowd":
+                    # Indicateur magenta pour déplacement vers foule
+                    mascot_moving_sprite = self.sprite('employee_moving')
+                    mascot_moving_sprite = pygame.transform.scale(mascot_moving_sprite, (12, 12))
+                    # Teinter en magenta
+                    mascot_moving_sprite = mascot_moving_sprite.copy()
+                    mascot_moving_sprite.fill((255, 0, 255, 255), special_flags=pygame.BLEND_RGBA_MULT)
+                    objs.append((mascot_moving_sprite,(indicator_x,indicator_y)))
+                elif employee.state == "entertaining":
+                    # Indicateur étoile dorée pour animation
+                    mascot_entertain_sprite = self.sprite('employee_working')
+                    mascot_entertain_sprite = pygame.transform.scale(mascot_entertain_sprite, (12, 12))
+                    # Teinter en or/jaune vif
+                    mascot_entertain_sprite = mascot_entertain_sprite.copy()
+                    mascot_entertain_sprite.fill((255, 215, 0, 255), special_flags=pygame.BLEND_RGBA_MULT)
+                    objs.append((mascot_entertain_sprite,(indicator_x,indicator_y)))
+        
+        # Render litter and bins
+        # Render bins first (so they appear behind visitors)
+        for bin_obj in self.litter_manager.bins:
+            bin_sprite = self.sprite('bin')
+            objs.append((bin_sprite,(bin_obj.x, bin_obj.y)))
+        
+        # Render litter (smaller, visible sprites with random positions and colors)
+        for litter in self.litter_manager.litters:
+            # Create a small litter sprite with type-specific colors
+            litter_surf = pygame.Surface((12, 12), pygame.SRCALPHA)
+            color, dark_color = litter.get_colors()
+            litter_surf.fill(color)  # Base color
+            pygame.draw.circle(litter_surf, dark_color, (6, 6), 5)  # Darker center
+            # Use the random offset stored in the litter object
+            objs.append((litter_surf,(litter.x + litter.offset_x, litter.y + litter.offset_y)))
+        
+        self.renderer.draw_objects(objs)
+        if hover and self.grid.in_bounds(*hover):
+            ok=True
+            if self.toolbar.active.startswith('shop_') and self.shop_placement_mode is None: 
+                sd = self.shop_defs.get(self.toolbar.active)
+                if sd:
+                    ok = self._can_place_shop(sd, *hover)
+                    # Draw shop preview
+                    self.renderer.draw_ride_preview(hover[0], hover[1], sd.size[0], sd.size[1], ok=ok)
+            elif self.toolbar.active.startswith('ride_'):
+                rd = self.ride_defs.get(self.toolbar.active)
+                if rd:
+                    ok = self._can_place_ride(rd, *hover)
+                    # Draw ride preview
+                    self.renderer.draw_ride_preview(hover[0], hover[1], rd.size[0], rd.size[1], ok=ok)
+            elif self.ride_placement_mode == 'entrance' and self.selected_ride:
+                ok = self.selected_ride.can_place_entrance(*hover)
+            elif self.ride_placement_mode == 'exit' and self.selected_ride:
+                ok = self.selected_ride.can_place_exit(*hover)
+            elif self.shop_placement_mode == 'entrance' and self.selected_shop:
+                ok = self._can_place_shop_entrance(self.selected_shop, *hover)
+            elif self.toolbar.active == 'walk_path':
+                ok = not self._is_on_ride(*hover)
+            elif self.toolbar.active == 'queue_path':
+                ok = not self._is_on_ride(*hover) and (self.last_queue_pos is None or self._can_connect_queue_tile(*hover))
+            elif self.toolbar.active.startswith('bin_'):
+                # Check if bin can be placed here (GRASS adjacent to WALK)
+                if self.grid.get(*hover) == TILE_GRASS:
+                    adjacent_to_walk = False
+                    for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                        nx, ny = hover[0] + dx, hover[1] + dy
+                        if self.grid.in_bounds(nx, ny) and self.grid.get(nx, ny) == TILE_WALK:
+                            adjacent_to_walk = True
+                            break
+                    ok = adjacent_to_walk and not self.litter_manager.get_bin_at(*hover)
+                else:
+                    ok = False
+            
+            # Only draw single-tile highlight if not drawing ride preview
+            if not (self.toolbar.active.startswith('ride_') and self.ride_defs.get(self.toolbar.active)):
+                self.renderer.draw_highlight(*hover, ok=ok)
+        
+        # Draw path preview when dragging
+        if self.path_dragging and self.last_path_pos:
+            mx, my = pygame.mouse.get_pos()
+            # Toolbar maintenant en bas, donc preview partout sauf dans la toolbar
+            screen_height = self.screen.get_height()
+            toolbar_y = screen_height - 48
+            if my < toolbar_y:  # Only show preview above toolbar
+                preview_gx, preview_gy = self.renderer.screen_to_grid(mx, my)
+                if self.grid.in_bounds(preview_gx, preview_gy) and (preview_gx, preview_gy) != self.last_path_pos and not self._is_on_ride(preview_gx, preview_gy):
+                    # Show a semi-transparent preview of where the path will be placed
+                    if self.toolbar.active == 'walk_path':
+                        self.renderer.draw_highlight(preview_gx, preview_gy, ok=True, preview=True)
+                    elif self.toolbar.active == 'queue_path':
+                        can_connect = self.last_queue_pos is None or self._can_connect_queue_tile(preview_gx, preview_gy)
+                        self.renderer.draw_highlight(preview_gx, preview_gy, ok=can_connect, preview=True)
+        mode_text = ""
+        if self.ride_placement_mode == 'entrance':
+            mode_text = " | Place Entrance"
+        elif self.ride_placement_mode == 'exit':
+            mode_text = " | Place Exit"
+        
+        # Calculate park stats
+        num_guests = len(self.guests)
+        avg_happiness = sum(g.happiness for g in self.guests) / num_guests if num_guests > 0 else 0.0
+        avg_satisfaction = sum(g.satisfaction for g in self.guests) / num_guests if num_guests > 0 else 0.0
+        avg_excitement = sum(g.excitement for g in self.guests) / num_guests if num_guests > 0 else 0.0
+
+        # Count employees by type
+        from .employees import Engineer, MaintenanceWorker, SecurityGuard, Mascot
+        num_engineers = len([e for e in self.employees if isinstance(e, Engineer)])
+        num_maintenance = len([e for e in self.employees if isinstance(e, MaintenanceWorker)])
+        num_security = len([e for e in self.employees if isinstance(e, SecurityGuard)])
+        num_mascots = len([e for e in self.employees if isinstance(e, Mascot)])
+
+        # Count litter
+        num_litter = len(self.litter_manager.litters)
+        num_bins = len(self.litter_manager.bins)
+
+        # Compter les files d'attente connectées
+        queue_paths = self.queue_manager.find_queue_paths(self.grid)
+        connected_queues = sum(1 for qp in queue_paths if qp.connected_ride)
+        total_queues = len(queue_paths)
+
+        # Draw stats panel (top-left corner)
+        stats_bg = pygame.Surface((380, 130), pygame.SRCALPHA)
+        stats_bg.fill((20, 20, 20, 200))  # Semi-transparent dark background
+        self.screen.blit(stats_bg, (8, 8))
+
+        # Main HUD line
+        hud=f"Cash: ${self.economy.cash}  |  Guests: {num_guests}  |  Rides: {len(self.rides)}  |  Shops: {len(self.shops)}{mode_text}"
+        self.screen.blit(self.font.render(hud,True,(255,255,255)),(12,12))
+
+        # Guest satisfaction line with color coding
+        happiness_color = self._get_satisfaction_color(avg_happiness)
+        satisfaction_color = self._get_satisfaction_color(avg_satisfaction)
+        excitement_color = self._get_satisfaction_color(avg_excitement)
+
+        y_offset = 32
+        self.screen.blit(self.font.render(f"Happiness:", True, (200,200,200)), (12, y_offset))
+        self.screen.blit(self.font.render(f"{avg_happiness*100:.0f}%", True, happiness_color), (110, y_offset))
+
+        self.screen.blit(self.font.render(f"Satisfaction:", True, (200,200,200)), (170, y_offset))
+        self.screen.blit(self.font.render(f"{avg_satisfaction*100:.0f}%", True, satisfaction_color), (270, y_offset))
+
+        # Employees line
+        y_offset += 20
+        employees_text = f"Employees: {num_engineers}E {num_maintenance}M {num_security}S {num_mascots}Mc"
+        self.screen.blit(self.font.render(employees_text, True, (180,220,255)), (12, y_offset))
+
+        # Litter and bins line
+        y_offset += 20
+        litter_color = (255, 100, 100) if num_litter > 10 else (150, 255, 150) if num_litter < 5 else (255, 255, 150)
+        litter_text = f"Litter: {num_litter}  |  Bins: {num_bins}  |  Queues: {connected_queues}/{total_queues}"
+        self.screen.blit(self.font.render(litter_text, True, litter_color), (12, y_offset))
+
+        # Technical info line (smaller)
+        y_offset += 20
+        tech_info = f"Zoom: {self.renderer.camera.zoom:.2f}  Tile: {int(self.renderer.base_tile_w)}x{int(self.renderer.base_tile_h)}  φ: {self.debug_menu.oblique_tilt:.1f}°"
+        self.screen.blit(self.font.render(tech_info, True, (150,150,150)), (12, y_offset))
+        
+        # Dessiner la toolbar et ses sous-menus au premier plan (en dernier)
+        self.toolbar.draw(self.screen)
+        self.debug_menu.draw(self.screen)
+        pygame.display.flip()
+
+    def _get_employee_at_position(self, x, y):
+        """Get employee at position"""
+        for employee in self.employees:
+            if employee.x == x and employee.y == y:
+                return employee
+        return None
+
+    def _assign_engineers_to_broken_rides(self):
+        """Assign available engineers to broken rides"""
+        # Find broken rides that need repair
+        broken_rides = [ride for ride in self.rides if ride.is_broken and not ride.being_repaired]
+        
+        # Find idle engineers
+        idle_engineers = [emp for emp in self.employees if emp.defn.type == 'engineer' and emp.state == 'idle']
+        
+        # Debug logging
+        if DebugConfig.EMPLOYEES:
+            DebugConfig.log('engine', f"Found {len(broken_rides)} broken rides, {len(idle_engineers)} idle engineers")
+            DebugConfig.log('engine', f"Total employees: {len(self.employees)}")
+            if self.employees:
+                DebugConfig.log('engine', f"Employee types: {[emp.defn.type for emp in self.employees]}")
+                DebugConfig.log('engine', f"Employee states: {[emp.state for emp in self.employees]}")
+        
+        # Assign engineers to broken rides
+        for i, ride in enumerate(broken_rides):
+            if i < len(idle_engineers):
+                engineer = idle_engineers[i]
+                engineer.start_repair(ride, self.grid)
+                DebugConfig.log('engine', f"Assigned engineer {engineer.id} to repair {ride.defn.name}")
+
+    def _assign_maintenance_workers_to_litter(self):
+        """Assign available maintenance workers to clean litter or patrol/garden"""
+        from .employees import MaintenanceWorker
+
+        # Find idle maintenance workers on paths
+        idle_path_workers = [emp for emp in self.employees
+                           if isinstance(emp, MaintenanceWorker)
+                           and emp.state == 'idle'
+                           and emp.placement_type == 'path']
+
+        # For each idle path worker, find nearest litter or start patrol
+        for worker in idle_path_workers:
+            # Check if patrol timer expired first
+            should_patrol = worker.patrol_timer >= worker.patrol_duration
+
+            nearest_litter = worker.find_nearest_litter(self.litter_manager, self.grid)
+            if nearest_litter:
+                # Check if no other worker is already targeting this litter
+                already_targeted = any(
+                    isinstance(emp, MaintenanceWorker)
+                    and emp.target_litter == nearest_litter
+                    and emp.state in ['moving_to_litter', 'cleaning']
+                    for emp in self.employees
+                )
+
+                if not already_targeted:
+                    success = worker.start_cleaning(nearest_litter, self.grid)
+                    if success:
+                        DebugConfig.log('engine', f"Assigned maintenance worker {worker.id} to clean litter at ({nearest_litter.x}, {nearest_litter.y})")
+                    else:
+                        DebugConfig.log('engine', f"Maintenance worker {worker.id} failed to start cleaning, will try patrol")
+                elif should_patrol:
+                    # Litter already targeted by someone else, start patrol instead
+                    success = worker.start_patrol(self.grid)
+                    if success:
+                        DebugConfig.log('engine', f"Maintenance worker {worker.id} started patrol (no available litter)")
+                    else:
+                        # Patrol failed, reset timer to retry
+                        DebugConfig.log('engine', f"Maintenance worker {worker.id} patrol failed (litter targeted), will retry")
+                        worker.patrol_timer = 0.0
+            elif should_patrol:
+                # No litter found and timer expired, start patrol
+                success = worker.start_patrol(self.grid)
+                if success:
+                    DebugConfig.log('engine', f"Maintenance worker {worker.id} started patrol (no litter found)")
+                else:
+                    # Patrol failed, reset timer to 0 to retry immediately
+                    DebugConfig.log('engine', f"Maintenance worker {worker.id} patrol failed, will retry")
+                    worker.patrol_timer = 0.0  # Reset to 0, not negative!
+
+        # Handle cleaning completion - remove litter
+        for worker in [emp for emp in self.employees if isinstance(emp, MaintenanceWorker)]:
+            if worker.state == 'cleaning' and worker.target_litter:
+                # Check if cleaning just started (timer near 0)
+                # Remove litter when cleaning completes
+                if worker.cleaning_timer >= worker.cleaning_duration - 0.05:  # Just before completion
+                    if worker.target_litter in self.litter_manager.litters:
+                        self.litter_manager.remove_litter(worker.target_litter)
+                        DebugConfig.log('engine', f"Maintenance worker {worker.id} removed litter at ({worker.target_litter.x}, {worker.target_litter.y})")
+
+    def _assign_maintenance_workers_to_gardening(self):
+        """Assign available grass maintenance workers to gardening tasks"""
+        from .employees import MaintenanceWorker
+        import random
+
+        # Find idle maintenance workers on grass
+        idle_grass_workers = [emp for emp in self.employees
+                             if isinstance(emp, MaintenanceWorker)
+                             and emp.state == 'idle'
+                             and emp.placement_type == 'grass']
+
+        # For each idle grass worker, start continuous mowing
+        for worker in idle_grass_workers:
+            # Check if patrol timer expired
+            if worker.patrol_timer >= worker.patrol_duration:
+                # Start continuous lawn mowing (worker will move tile by tile)
+                worker.start_mowing(self.grid)
+                DebugConfig.log('engine', f"Assigned maintenance worker {worker.id} to start continuous lawn mowing - pattern: {worker.lawn_mowing_pattern}")
+
+        # Update mowing workers - move them to next tile when ready
+        mowing_workers = [emp for emp in self.employees
+                         if isinstance(emp, MaintenanceWorker)
+                         and emp.state == 'mowing']
+
+        DebugConfig.log('engine', f"Found {len(mowing_workers)} workers in mowing state")
+
+        for worker in mowing_workers:
+            DebugConfig.log('engine', f"Worker {worker.id} gardening_timer: {worker.gardening_timer:.3f}, mowing_speed: {worker.mowing_speed:.3f}")
+
+            # Check if worker finished mowing current tile
+            if worker.gardening_timer >= worker.mowing_speed:
+                DebugConfig.log('engine', f"Worker {worker.id} timer expired, getting next position")
+
+                # Get next position in mowing pattern
+                next_pos = worker._get_next_mowing_position(self.grid)
+
+                if next_pos:
+                    # Move worker to next position instantly (simulate mowing)
+                    DebugConfig.log('engine', f"Worker {worker.id} moving from ({int(worker.x)}, {int(worker.y)}) to ({next_pos[0]}, {next_pos[1]})")
+                    worker.x = float(next_pos[0])
+                    worker.y = float(next_pos[1])
+                    worker.gardening_timer = 0.0
+                    DebugConfig.log('engine', f"Maintenance worker {worker.id} moved to next mowing position ({next_pos[0]}, {next_pos[1]})")
+                else:
+                    # No more grass to mow, go back to idle
+                    DebugConfig.log('engine', f"Worker {worker.id} no next position found, going idle")
+                    worker.state = "idle"
+                    worker.patrol_timer = worker.patrol_duration  # Trigger immediate restart
+                    DebugConfig.log('engine', f"Maintenance worker {worker.id} finished mowing pattern, restarting")
+
+    def _assign_security_guards_to_patrol(self):
+        """Assign idle security guards to patrol and update nearby guests"""
+        from .employees import SecurityGuard
+
+        # Find idle security guards
+        idle_guards = [emp for emp in self.employees
+                      if isinstance(emp, SecurityGuard)
+                      and emp.state == 'idle']
+
+        # Start patrol for idle guards
+        for guard in idle_guards:
+            if guard.patrol_timer >= guard.patrol_duration:
+                success = guard.start_patrol(self.grid)
+                if success:
+                    DebugConfig.log('engine', f"Security guard {guard.id} started patrol")
+                else:
+                    # Failed to find patrol path, retry soon (set to small value, not negative)
+                    guard.patrol_timer = 0.0  # Reset to 0 to retry immediately next frame
+
+        # Update all security guards' nearby guest detection
+        for guard in [emp for emp in self.employees if isinstance(emp, SecurityGuard)]:
+            nearby_count = guard.update_nearby_guests(self.guests)
+            if nearby_count > 0:
+                DebugConfig.log('engine', f"Security guard {guard.id} protecting {nearby_count} guests")
+
+    def _assign_mascots_to_crowds(self):
+        """Assign idle mascots to find and entertain crowds"""
+        from .employees import Mascot
+
+        # Find idle mascots
+        idle_mascots = [emp for emp in self.employees
+                       if isinstance(emp, Mascot)
+                       and emp.state == 'idle']
+
+        # Find crowds for idle mascots
+        for mascot in idle_mascots:
+            if mascot.search_timer >= mascot.search_duration:
+                # Find best crowd location (prioritize queues 70% of time)
+                crowd_location = mascot.find_best_crowd_location(self.guests, self.queue_manager)
+
+                if crowd_location:
+                    success = mascot.start_moving_to_crowd(crowd_location, self.grid)
+                    if success:
+                        DebugConfig.log('engine', f"Mascot {mascot.id} moving to crowd at {crowd_location}")
+                        mascot.search_timer = 0.0  # Reset timer on success
+                    else:
+                        # Failed to find path, reset timer to retry (don't go negative!)
+                        mascot.search_timer = 0.0  # Reset to 0 to retry immediately next frame
+                else:
+                    # No crowd found, reset timer to retry (don't go negative!)
+                    DebugConfig.log('engine', f"Mascot {mascot.id} found no crowd, will retry")
+                    mascot.search_timer = 0.0  # Reset to 0 to retry immediately next frame
+
+        # Update all mascots' nearby guest detection
+        for mascot in [emp for emp in self.employees if isinstance(emp, Mascot)]:
+            nearby_count = mascot.update_nearby_guests(self.guests)
+            if nearby_count > 0 and mascot.state == "entertaining":
+                DebugConfig.log('engine', f"Mascot {mascot.id} entertaining {nearby_count} guests")
+
+    def _apply_employee_effects_on_guests(self):
+        """Apply effects from SecurityGuards and Mascots to nearby guests"""
+        from .employees import SecurityGuard, Mascot
+
+        # Apply SecurityGuard effects (+5% satisfaction for guests in security radius)
+        for guard in [emp for emp in self.employees if isinstance(emp, SecurityGuard)]:
+            if guard.state == "patrolling" and guard.nearby_guests:
+                for guest in guard.nearby_guests:
+                    # Apply satisfaction boost (capped at 1.0)
+                    guest.satisfaction = min(1.0, guest.satisfaction + 0.05)
+                DebugConfig.log('engine', f"Security guard {guard.id} boosted satisfaction for {len(guard.nearby_guests)} guests")
+
+        # Apply Mascot effects (+10% excitement for guests in entertainment radius)
+        for mascot in [emp for emp in self.employees if isinstance(emp, Mascot)]:
+            if mascot.state == "entertaining" and mascot.nearby_guests:
+                for guest in mascot.nearby_guests:
+                    # Apply excitement boost (capped at 1.0)
+                    guest.excitement = min(1.0, guest.excitement + 0.10)
+                    # Also small happiness boost (+3%)
+                    guest.happiness = min(1.0, guest.happiness + 0.03)
+                DebugConfig.log('engine', f"Mascot {mascot.id} boosted excitement for {len(mascot.nearby_guests)} guests")
+
+    def _apply_litter_proximity_penalties(self):
+        """Apply satisfaction penalties to guests near litter"""
+        for guest in self.guests:
+            # Count litter within 3 tiles radius
+            litter_count = 0
+            for litter in self.litter_manager.litters:
+                distance = abs(guest.grid_x - litter.x) + abs(guest.grid_y - litter.y)
+                if distance <= 3:
+                    litter_count += 1
+
+            # Apply penalty based on nearby litter (-2% per litter item)
+            if litter_count > 0:
+                penalty = -0.02 * litter_count
+                guest.modify_satisfaction(penalty, f"nearby litter ({litter_count} items)")
+
+    def _apply_park_cleanliness_bonus(self):
+        """Apply satisfaction bonus based on overall park cleanliness"""
+        total_litter = len(self.litter_manager.litters)
+
+        # Calculate cleanliness rating (fewer litter = cleaner park)
+        # Very clean park (< 5 litter): +2% satisfaction per tick
+        if total_litter < 5:
+            for guest in self.guests:
+                guest.modify_satisfaction(0.02, "very clean park")
+
+    def _get_satisfaction_color(self, value):
+        """Return color based on satisfaction value (0.0-1.0)"""
+        if value >= 0.7:
+            return (100, 255, 100)  # Green - high satisfaction
+        elif value >= 0.4:
+            return (255, 255, 100)  # Yellow - medium satisfaction
+        else:
+            return (255, 100, 100)  # Red - low satisfaction
+
+    def _handle_broken_rides(self):
+        """Handle broken rides - evacuate queues and prevent new visitors"""
+        for ride in self.rides:
+            if ride.is_broken and not hasattr(ride, '_queue_evacuated'):
+                # Evacuate queue for this broken ride (only once)
+                self.queue_manager.evacuate_queue_for_broken_ride(ride)
+                ride._queue_evacuated = True
+                
+                # Prevent new visitors from targeting this ride and apply penalty
+                for guest in self.guests:
+                    if guest.target_ride == ride:
+                        guest.target_ride = None
+                        guest.target_queue = None
+                        guest.state = "wandering"
+                        guest.apply_broken_ride_penalty()  # Apply satisfaction penalty
+                        DebugConfig.log('engine', f"Guest {guest.id} redirected from broken ride {ride.defn.name}")
+            
+            # Reset evacuation flag when ride is repaired
+            if not ride.is_broken and hasattr(ride, '_queue_evacuated'):
+                delattr(ride, '_queue_evacuated')
+    
+    def _handle_guest_litter(self, guest):
+        """Handle guest with litter - try to find bin or drop it"""
+        import random
+        # Calculate search radius based on guest's state
+        search_radius = guest.get_bin_search_radius()
+        
+        # Try to find a bin
+        nearest_bin = self.litter_manager.find_nearest_bin(guest.grid_x, guest.grid_y, search_radius)
+        
+        if nearest_bin:
+            # Bin found! Try to go to it
+            # Check if bin is on path to target
+            # For simplicity, just go to bin (70% chance)
+            if random.random() < 0.7:
+                # Find path to bin
+                from .pathfinding import astar
+                bin_pos = (nearest_bin.x, nearest_bin.y)
+                guest_pos = (guest.grid_x, guest.grid_y)
+                
+                path = astar(self.grid, guest_pos, bin_pos)
+                if path and len(path) > 1:
+                    guest.path = path[1:]  # Skip current position
+                    guest.target_bin = nearest_bin
+                    guest.state = "walking_to_bin"
+                    DebugConfig.log('guests', f"Guest {guest.id} found bin at {bin_pos}, going there")
+                else:
+                    # Can't reach bin, drop litter
+                    if guest.should_drop_litter_randomly():
+                        self.litter_manager.add_litter(guest.grid_x, guest.grid_y, guest.litter_type)
+                        guest.has_litter = False
+                        guest.litter_type = None
+                        guest.litter_hold_timer = 0.0
+                        guest.litter_hold_duration = 0.0
+                        guest.apply_litter_drop_penalty()  # Apply satisfaction penalty
+                        DebugConfig.log('guests', f"Guest {guest.id} dropped litter (couldn't reach bin)")
+            else:
+                # Decided not to go to bin, drop litter
+                if guest.should_drop_litter_randomly():
+                    self.litter_manager.add_litter(guest.grid_x, guest.grid_y, guest.litter_type)
+                    guest.has_litter = False
+                    guest.litter_type = None
+                    guest.litter_hold_timer = 0.0
+                    guest.litter_hold_duration = 0.0
+                    guest.apply_litter_drop_penalty()  # Apply satisfaction penalty
+                    DebugConfig.log('guests', f"Guest {guest.id} dropped litter (chose not to go to bin)")
+        else:
+            # No bin found, drop litter
+            if guest.should_drop_litter_randomly():
+                self.litter_manager.add_litter(guest.grid_x, guest.grid_y, guest.litter_type)
+                guest.has_litter = False
+                guest.litter_type = None
+                guest.litter_hold_timer = 0.0
+                guest.litter_hold_duration = 0.0
+                guest.apply_litter_drop_penalty()  # Apply satisfaction penalty
+                DebugConfig.log('guests', f"Guest {guest.id} dropped litter (no bin found)")
+
+    def run(self):
+        running=True
+        while running:
+            dt=self.clock.tick(60)/1000.0
+            running,_,hover=self.handle_events(); self.update(dt); self.draw(hover)
+        pygame.quit()

@@ -1,0 +1,142 @@
+{
+  "rides": [
+    {
+      "id": "ride_carousel",
+      "name": "Carousel",
+      "build_cost": 1500,
+      "ticket_price": 5,
+      "capacity": 16,
+      "thrill": 0.4,
+      "nausea": 0.2,
+      "maint_cost": 50,
+        "breakdown_chance": 0.01,
+      "sprite": "ride_carousel",
+      "size": [5, 5],
+      "entrance_cost": 200,
+      "exit_cost": 200
+    },
+    {
+      "id": "ride_bumper",
+      "name": "Bumper Cars",
+      "build_cost": 2500,
+      "ticket_price": 7,
+      "capacity": 12,
+      "thrill": 0.5,
+      "nausea": 0.3,
+      "maint_cost": 70,
+        "breakdown_chance": 0.01,
+      "sprite": "ride_bumper",
+      "size": [4, 4],
+      "entrance_cost": 150,
+      "exit_cost": 150
+    }
+  ],
+  "shops": [
+    {
+      "id": "shop_soda",
+      "name": "Soda Stand",
+      "build_cost": 400,
+      "base_price": 2,
+      "sprite": "shop_soda",
+      "size": [2, 2],
+      "entrance_cost": 0,
+      "litter_type": "soda"
+    },
+    {
+      "id": "shop_icecream",
+      "name": "Ice Cream",
+      "build_cost": 500,
+      "base_price": 3,
+      "sprite": "shop_icecream",
+      "size": [3, 3],
+      "entrance_cost": 0,
+      "litter_type": "trash"
+    },
+    {
+      "id": "shop_restaurant",
+      "name": "Restaurant",
+      "build_cost": 1200,
+      "base_price": 8,
+      "sprite": "shop_restaurant",
+      "size": [3, 5],
+      "entrance_cost": 0,
+      "litter_type": "trash"
+    },
+    {
+      "id": "shop_gift",
+      "name": "Gift Shop",
+      "build_cost": 800,
+      "base_price": 5,
+      "sprite": "shop_gift",
+      "size": [5, 5],
+      "entrance_cost": 0,
+      "litter_type": "trash"
+    }
+  ],
+  "employees": [
+    {
+      "id": "employee_engineer",
+      "name": "Ingénieur",
+      "type": "engineer",
+      "salary": 50,
+      "sprite": "employee_engineer",
+      "efficiency": 1.0
+    },
+    {
+      "id": "employee_maintenance",
+      "name": "Agent de Maintenance",
+      "type": "maintenance",
+      "salary": 30,
+      "sprite": "employee_maintenance",
+      "efficiency": 1.0
+    },
+    {
+      "id": "employee_security",
+      "name": "Gardien de Parc",
+      "type": "security",
+      "salary": 40,
+      "sprite": "employee_security",
+      "efficiency": 1.0
+    },
+    {
+      "id": "employee_mascot",
+      "name": "Mascotte",
+      "type": "mascot",
+      "salary": 60,
+      "sprite": "employee_mascot",
+      "efficiency": 1.0
+    }
+  ],
+  "bins": [
+    {
+      "id": "bin_standard",
+      "name": "Trash Bin",
+      "cost": 50,
+      "capacity": 999,
+      "sprite": "bin"
+    }
+  ],
+  "projection_default": [
+    64,
+    36
+  ],
+  "projection_presets": [
+    [
+      64,
+      32
+    ],
+    [
+      64,
+      28
+    ],
+    [
+      64,
+      36
+    ],
+    [
+      72,
+      36
+    ]
+  ],
+  "tilt_default": 10.0
+}
