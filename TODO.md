@@ -99,18 +99,86 @@
     - Capacité de stockage
     - Intégration avec le système économique
     - Sprite visuel
+    - Coloration verte sur la grille
+
+### Système de temps et vitesse
+18. **Système de temps du jeu** ✅
+    - 1 jour in-game = 12 minutes réelles (configurable)
+    - Affichage Day X HH:MM
+    - Ouverture/fermeture du parc avec touche 'O'
+    - Visiteurs restent maximum 10 jours in-game
+    - Évacuation automatique à la fermeture
+
+19. **Système de vitesse du jeu** ✅
+    - Pause (Space) : game_speed = 0
+    - Normal (1) : game_speed = 1.0
+    - Rapide (2) : game_speed = 2.0
+    - Très rapide (3) : game_speed = 3.0
+    - Affectation correcte aux visiteurs, employés, attractions
+
+### Système de besoins des visiteurs
+20. **Système de besoins (Hunger/Thirst/Bladder)** ✅
+    - Hunger : décroît à -0.00333/s (0.0 = affamé, 1.0 = rassasié)
+    - Thirst : décroît à -0.005/s (plus rapide)
+    - Bladder : augmente à +0.00267/s (0.0 = vide, 1.0 = urgent)
+    - Pénalités de satisfaction si besoins non satisfaits
+    - Affichage dans le HUD avec codes couleur
+
+21. **Système de priorité des besoins** ✅
+    - Priorité 1 : Bladder > 70% → Cherche toilettes
+    - Priorité 2 : Thirst < 30% → Cherche boisson
+    - Priorité 3 : Hunger < 30% → Cherche nourriture
+    - Pathfinding intelligent vers installations
+
+22. **Implémentation des toilettes (Restrooms)** ✅
+    - 4 tailles : Small (1x1, 2), Medium (2x1, 4), Large (2x2, 6), XL (3x2, 8)
+    - Placement adjacent aux chemins (comme bins)
+    - Gestion de la capacité
+    - Système d'occupation/libération
+    - Coloration violette sur la grille
+    - Prévisualisation correcte de la taille
+
+23. **Types de shops par catégorie** ✅
+    - shop_type : "food", "drink", "souvenir"
+    - Pathfinding vers shops spécifiques selon besoin
+    - Revenus générés par nourriture et boissons
+    - Déduction du budget visiteur
+
+24. **Prix d'entrée du parc** ✅
+    - Prix d'entrée configurable (défaut $50)
+    - Budget visiteurs : $75-$300
+    - Refus d'entrée si budget insuffisant
+    - UI panel avec slider pour ajuster le prix
+    - Taux de spawn progressif selon le prix
+    - Stats dans HUD : revenue et refusés
+
+### Système d'entrée du parc
+25. **Entrée fixe au sud** ✅
+    - Entrée du parc positionnée au sud (centre)
+    - Spawn des visiteurs à l'entrée
+    - Sortie des visiteurs par la même entrée
+    - Caméra centrée sur l'entrée à 70% de hauteur
+    - Tuile spéciale TILE_PARK_ENTRANCE colorée en doré
+
+### Améliorations visuelles
+26. **Coloration des tuiles sur la grille** ✅
+    - Rides : Bleu (100, 100, 200)
+    - Shops : Marron (200, 150, 100)
+    - Restrooms : Violet/Lavande (180, 130, 200)
+    - Bins : Vert (100, 200, 100)
+    - Identification visuelle claire de tous les bâtiments
 
 ## Tâches en attente 📋
 
 ### Haute priorité
 
-18. **Compléter les systèmes d'employés restants**
+27. **Compléter les systèmes d'employés restants**
     - Difficulté : 3/5
-    - Gardien de parc : sécurité et prévention des vols
-    - Mascotte : augmentation de l'excitation des visiteurs
-    - Système de patrouille pour chaque type
+    - Gardien de parc : sécurité et prévention des vols (déjà implémenté)
+    - Mascotte : augmentation de l'excitation des visiteurs (déjà implémenté)
+    - Note : Les 4 types d'employés sont maintenant opérationnels
 
-19. **Ajouter plus d'attractions dans objects.json**
+28. **Ajouter plus d'attractions dans objects.json**
     - Difficulté : 2/5
     - Roller coaster
     - Ferris wheel
@@ -118,7 +186,7 @@
     - Haunted house
     - Water rides
 
-20. **Améliorer le système économique**
+29. **Améliorer le système économique**
     - Difficulté : 3/5
     - Budget de départ plus réaliste
     - Équilibrage des coûts et revenus
@@ -127,26 +195,19 @@
 
 ### Priorité moyenne
 
-21. **Améliorer la toolbar**
+30. **Améliorer la toolbar**
     - Difficulté : 3/5
     - Interface plus moderne et intuitive
     - Icônes plus claires
     - Meilleure organisation des catégories
 
-22. **Système de bonheur des visiteurs**
-    - Difficulté : 4/5
-    - Jauge de satisfaction
-    - Impact des attractions, shops, propreté
-    - Visiteurs mécontents quittent le parc
-    - Revenus liés au bonheur
-
-23. **Ajouter un système de sauvegarde/chargement**
+31. **Système de sauvegarde/chargement**
     - Difficulté : 3/5
     - Sauvegarde complète du parc (attractions, chemins, shops, employés, visiteurs)
     - Chargement des parcs sauvegardés
     - Gestion de plusieurs sauvegardes
 
-24. **Ajouter des animations pour les attractions**
+32. **Ajouter des animations pour les attractions**
     - Difficulté : 3/5
     - Animations des attractions en fonctionnement
     - Effets visuels (rotation, mouvement)
@@ -154,38 +215,37 @@
 
 ### Priorité basse
 
-25. **Optimiser le pathfinding**
+33. **Optimiser le pathfinding**
     - Difficulté : 4/5
     - Amélioration de l'algorithme A*
     - Gestion des obstacles dynamiques
     - Cache des chemins fréquents
 
-26. **Améliorer l'IA des visiteurs**
+34. **Améliorer l'IA des visiteurs**
     - Difficulté : 5/5
     - Système de groupes (familles, amis)
-    - Comportements plus réalistes
-    - Préférences avancées (nourriture, souvenirs)
-    - Fatigue et besoins (toilettes, repos)
+    - Comportements plus réalistes avancés
+    - Note : Système de besoins (faim/soif/toilettes) déjà implémenté ✅
 
-27. **Système météo**
+35. **Système météo**
     - Difficulté : 4/5
     - Conditions météorologiques (soleil, pluie, vent)
     - Impact sur les visiteurs (moins de visiteurs sous la pluie)
     - Impact sur les attractions (certaines ferment sous la pluie)
 
-28. **Système de recherche**
+36. **Système de recherche**
     - Difficulté : 5/5
     - Arbre de recherche technologique
     - Déblocage progressif des attractions
     - Coûts de recherche
 
-29. **Mode campagne**
+37. **Mode campagne**
     - Difficulté : 5/5
     - Scénarios prédéfinis avec objectifs
     - Progression et récompenses
     - Niveaux de difficulté
 
-30. **Mode multijoueur**
+38. **Mode multijoueur**
     - Difficulté : 5/5
     - Architecture réseau
     - Synchronisation du state
@@ -203,22 +263,32 @@
 - ✅ Sélection intelligente des attractions
 - ✅ Mouvement fluide des visiteurs
 - ✅ Toolbar groupée et sous-menus
-- ✅ Shops fonctionnels
+- ✅ Shops fonctionnels avec types (food/drink/souvenir)
 - ✅ Système d'ingénieurs complet avec déplacement fluide
 - ✅ Système de pannes d'attractions
 - ✅ Système d'agents de maintenance complet (nettoyage + tonte)
+- ✅ Système de gardiens de parc (sécurité, patrouille)
+- ✅ Système de mascottes (boost d'excitation)
 - ✅ Système de détritus et poubelles
+- ✅ Système de besoins visiteurs (hunger/thirst/bladder)
+- ✅ Système de toilettes (4 tailles, gestion capacité)
+- ✅ Système de temps du jeu (jour/heure, ouverture/fermeture)
+- ✅ Système de vitesse du jeu (pause, x1, x2, x3)
+- ✅ Prix d'entrée du parc configurable
+- ✅ Budget visiteurs et refus d'entrée
+- ✅ Entrée fixe au sud avec spawn/exit
+- ✅ Coloration visuelle des tuiles (rides/shops/restrooms/bins)
 - ✅ Pathfinding de base
-- ✅ Économie de base (cash, coûts, revenus)
+- ✅ Économie de base (cash, coûts, revenus, salaires)
 
 ### Problèmes connus
 - Aucun (système stable)
 
 ### Prochaines étapes recommandées
-1. Compléter les systèmes d'employés restants (gardien, mascotte)
-2. Ajouter plus d'attractions dans `objects.json`
-3. Améliorer le système économique (équilibrage)
-4. Système de bonheur des visiteurs
+1. Ajouter plus d'attractions dans `objects.json` (variété)
+2. Améliorer le système économique (équilibrage, graphiques)
+3. Système de sauvegarde/chargement
+4. Animations des attractions
 
 ### Architecture technique
 

@@ -16,6 +16,14 @@ class GuestState:
     SHOPPING = "shopping"
     WALKING_TO_BIN = "walking_to_bin"
     USING_BIN = "using_bin"
+    LEAVING = "leaving"  # Walking to park entrance to exit
+    # Needs states
+    WALKING_TO_FOOD = "walking_to_food"
+    EATING = "eating"
+    WALKING_TO_DRINK = "walking_to_drink"
+    DRINKING = "drinking"
+    WALKING_TO_RESTROOM = "walking_to_restroom"
+    USING_RESTROOM = "using_restroom"
 
 class Guest:
     def __init__(self, x: float, y: float):
@@ -45,7 +53,28 @@ class Guest:
         self.shop_timer = 0.0
         self.shop_duration = 2.0  # Time spent in shop
         self.id = random.randint(1000, 9999)  # Unique ID for debugging
-        
+
+        # Money and budget system
+        self.budget = random.randint(75, 300)  # Total budget for park visit ($75-$300)
+        self.money = self.budget  # Current money (reduced by entrance fee and purchases)
+
+        # Time tracking
+        self.entry_time = 0.0  # Game time when guest entered park (set by engine)
+
+        # Needs system (0.0 = empty, 1.0 = full)
+        self.hunger = random.uniform(0.7, 1.0)  # Starts mostly satisfied (0.0 = starving, 1.0 = full)
+        self.thirst = random.uniform(0.6, 1.0)  # Starts moderately satisfied (0.0 = parched, 1.0 = hydrated)
+        self.bladder = random.uniform(0.0, 0.2)  # Starts low (0.0 = empty, 1.0 = urgent)
+        self.target_food = None  # Food shop target
+        self.target_drink = None  # Drink shop target
+        self.target_restroom = None  # Restroom target
+        self.eating_timer = 0.0
+        self.eating_duration = random.uniform(8.0, 12.0)  # Time to eat (8-12 seconds)
+        self.drinking_timer = 0.0
+        self.drinking_duration = random.uniform(3.0, 5.0)  # Time to drink (3-5 seconds)
+        self.restroom_timer = 0.0
+        self.restroom_duration = random.uniform(5.0, 8.0)  # Time in restroom (5-8 seconds)
+
         # Litter system
         self.has_litter = False  # Has litter to throw away
         self.litter_type = None  # Type of litter (soda, trash, vomit)
@@ -84,6 +113,9 @@ class Guest:
         # Natural degradation of satisfaction metrics
         self._apply_natural_degradation(dt)
 
+        # Update needs (hunger decreases, thirst decreases, bladder increases)
+        self._update_needs(dt)
+
         # Update litter hold timer if guest has litter (in ANY state)
         if self.has_litter and self.litter_hold_timer < self.litter_hold_duration:
             self.litter_hold_timer += dt
@@ -115,6 +147,20 @@ class Guest:
             self._tick_walking_to_bin(dt)
         elif self.state == GuestState.USING_BIN:
             self._tick_using_bin(dt)
+        elif self.state == GuestState.LEAVING:
+            self._tick_leaving(dt)
+        elif self.state == GuestState.WALKING_TO_FOOD:
+            self._tick_walking_to_food(dt)
+        elif self.state == GuestState.EATING:
+            self._tick_eating(dt)
+        elif self.state == GuestState.WALKING_TO_DRINK:
+            self._tick_walking_to_drink(dt)
+        elif self.state == GuestState.DRINKING:
+            self._tick_drinking(dt)
+        elif self.state == GuestState.WALKING_TO_RESTROOM:
+            self._tick_walking_to_restroom(dt)
+        elif self.state == GuestState.USING_RESTROOM:
+            self._tick_using_restroom(dt)
     
     def _update_smooth_movement(self, dt: float):
         """Update smooth movement interpolation"""
@@ -412,6 +458,21 @@ class Guest:
             self.target_bin = None
             self.bin_use_timer = 0.0
 
+    def _tick_leaving(self, dt: float):
+        """Handle visitor leaving the park (walking to entrance to exit)"""
+        # Guest is following path to park entrance
+        # When path is empty, they have reached the entrance and can be removed
+        if not self.path:
+            # Reached entrance - guest will be removed by engine
+            DebugConfig.log('guests', f"Guest {self.id} reached park entrance and is leaving (satisfaction: {self.satisfaction:.2f})")
+            return
+
+        # Continue walking along path
+        if not self.is_moving and self.path:
+            next_tile = self.path[0]
+            self.path = self.path[1:]
+            self._start_movement_to(next_tile[0], next_tile[1])
+
     def get_bin_search_radius(self) -> int:
         """Calculate bin search radius based on guest state"""
         base_radius = 20
@@ -460,6 +521,34 @@ class Guest:
 
         # Satisfaction decreases very slowly
         self.satisfaction = max(0.0, self.satisfaction - 0.002 * dt)
+
+    def _update_needs(self, dt: float):
+        """Update guest needs (hunger, thirst, bladder)
+
+        Rates per in-game hour (30s real time at x1 speed):
+        - Hunger: -0.10/hour → -0.00333/s
+        - Thirst: -0.15/hour → -0.005/s
+        - Bladder: +0.08/hour → +0.00267/s
+
+        Note: These are real-time rates. Game speed is handled by engine's dt scaling.
+        """
+        # Hunger decreases (0.0 = starving, 1.0 = full)
+        self.hunger = max(0.0, self.hunger - 0.00333 * dt)
+
+        # Thirst decreases faster (0.0 = parched, 1.0 = hydrated)
+        self.thirst = max(0.0, self.thirst - 0.005 * dt)
+
+        # Bladder increases (0.0 = empty, 1.0 = urgent)
+        self.bladder = min(1.0, self.bladder + 0.00267 * dt)
+
+        # Apply satisfaction penalties for unmet needs
+        if self.hunger < 0.3:
+            self.satisfaction = max(0.0, self.satisfaction - 0.02 * dt)
+        if self.thirst < 0.3:
+            self.satisfaction = max(0.0, self.satisfaction - 0.03 * dt)
+        if self.bladder > 0.7:
+            penalty = 0.03 * dt if self.bladder < 0.9 else 0.10 * dt
+            self.satisfaction = max(0.0, self.satisfaction - penalty)
 
     def modify_happiness(self, amount: float, reason: str = ""):
         """Modify happiness (capped between 0.0 and 1.0)"""
@@ -514,3 +603,134 @@ class Guest:
         """Apply satisfaction penalty when targeted ride breaks down"""
         self.modify_happiness(-0.10, "ride broke down")
         self.modify_satisfaction(-0.15, "ride broke down")
+
+    # ===== NEEDS SYSTEM STATE HANDLERS =====
+
+    def _tick_walking_to_food(self, dt: float):
+        """Handle visitor walking to food shop"""
+        if not self.path:
+            # Reached food shop - start eating
+            self.state = GuestState.EATING
+            self.eating_timer = 0.0
+            DebugConfig.log('guests', f"Guest {self.id} started eating")
+            return
+
+        if not self.is_moving and self.path:
+            next_tile = self.path[0]
+            self.path = self.path[1:]
+            self._start_movement_to(next_tile[0], next_tile[1])
+
+    def _tick_eating(self, dt: float):
+        """Handle visitor eating"""
+        self.eating_timer += dt
+
+        if self.eating_timer >= self.eating_duration:
+            # Finished eating
+            self.hunger = min(1.0, self.hunger + 0.8)  # Restore hunger
+            self.thirst = min(1.0, self.thirst + 0.2)  # Slight thirst relief
+
+            # Deduct money from guest (payment will be handled by engine)
+            if self.target_shop:
+                price = self.target_shop.defn.base_price
+                if self.money >= price:
+                    self.money -= price
+                    self.modify_satisfaction(0.05, "ate food")
+                else:
+                    # Can't afford it - apply penalty
+                    self.modify_satisfaction(-0.03, "couldn't afford food")
+                    DebugConfig.log('guests', f"Guest {self.id} couldn't afford food (${price})")
+
+            # Generate litter (trash) 80% chance
+            if random.random() < 0.8:
+                self.has_litter = True
+                self.litter_type = "trash"
+                self.litter_hold_duration = random.uniform(3.0, 10.0)
+                self.litter_hold_timer = 0.0
+
+            self.state = GuestState.WANDERING
+            self.target_food = None
+            self.target_shop = None  # Clear shop target
+            DebugConfig.log('guests', f"Guest {self.id} finished eating (hunger: {self.hunger:.2f})")
+
+    def _tick_walking_to_drink(self, dt: float):
+        """Handle visitor walking to drink stand"""
+        if not self.path:
+            # Reached drink stand - start drinking
+            self.state = GuestState.DRINKING
+            self.drinking_timer = 0.0
+            DebugConfig.log('guests', f"Guest {self.id} started drinking")
+            return
+
+        if not self.is_moving and self.path:
+            next_tile = self.path[0]
+            self.path = self.path[1:]
+            self._start_movement_to(next_tile[0], next_tile[1])
+
+    def _tick_drinking(self, dt: float):
+        """Handle visitor drinking"""
+        self.drinking_timer += dt
+
+        if self.drinking_timer >= self.drinking_duration:
+            # Finished drinking
+            self.thirst = min(1.0, self.thirst + 0.9)  # Restore thirst
+            self.bladder = min(1.0, self.bladder + 0.25)  # Increase bladder need
+
+            # Deduct money from guest (payment will be handled by engine)
+            if self.target_shop:
+                price = self.target_shop.defn.base_price
+                if self.money >= price:
+                    self.money -= price
+                    self.modify_satisfaction(0.03, "drank beverage")
+                else:
+                    # Can't afford it - apply penalty
+                    self.modify_satisfaction(-0.02, "couldn't afford drink")
+                    DebugConfig.log('guests', f"Guest {self.id} couldn't afford drink (${price})")
+
+            # Generate litter (soda) 70% chance
+            if random.random() < 0.7:
+                self.has_litter = True
+                self.litter_type = "soda"
+                self.litter_hold_duration = random.uniform(3.0, 10.0)
+                self.litter_hold_timer = 0.0
+
+            self.state = GuestState.WANDERING
+            self.target_drink = None
+            self.target_shop = None  # Clear shop target
+            DebugConfig.log('guests', f"Guest {self.id} finished drinking (thirst: {self.thirst:.2f}, bladder: {self.bladder:.2f})")
+
+    def _tick_walking_to_restroom(self, dt: float):
+        """Handle visitor walking to restroom"""
+        if not self.path:
+            # Reached restroom - try to enter
+            if self.target_restroom and self.target_restroom.add_user(self):
+                self.state = GuestState.USING_RESTROOM
+                self.restroom_timer = 0.0
+                DebugConfig.log('guests', f"Guest {self.id} started using restroom")
+            else:
+                # Restroom full, go back to wandering
+                DebugConfig.log('guests', f"Guest {self.id} can't use restroom (full), going back to wandering")
+                self.state = GuestState.WANDERING
+                self.target_restroom = None
+            return
+
+        if not self.is_moving and self.path:
+            next_tile = self.path[0]
+            self.path = self.path[1:]
+            self._start_movement_to(next_tile[0], next_tile[1])
+
+    def _tick_using_restroom(self, dt: float):
+        """Handle visitor using restroom"""
+        self.restroom_timer += dt
+
+        if self.restroom_timer >= self.restroom_duration:
+            # Finished using restroom
+            self.bladder = 0.0  # Reset bladder
+            self.modify_satisfaction(0.08, "used restroom (relief)")
+
+            # Remove from restroom occupancy
+            if self.target_restroom:
+                self.target_restroom.remove_user(self)
+
+            self.state = GuestState.WANDERING
+            self.target_restroom = None
+            DebugConfig.log('guests', f"Guest {self.id} finished using restroom (bladder: {self.bladder:.2f})")

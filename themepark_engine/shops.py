@@ -12,6 +12,7 @@ class ShopDef:
     size: List[int]  # [width, height] en tuiles
     entrance_cost: int = 0  # Coût pour placer l'entrée
     litter_type: str = "trash"  # Type de détritus généré (soda, trash, vomit)
+    shop_type: str = "souvenir"  # Type de shop: "food", "drink", "souvenir"
 
 @dataclass
 class ShopEntrance:

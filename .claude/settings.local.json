@@ -7,7 +7,9 @@
       "Bash(git restore --staged .claude/settings.local.json)",
       "Bash(git add .github/)",
       "Bash(git commit -m \"docs: Rename .github/README.md to TEMPLATES.md\n\nAvoids confusion with main README.md at repository root.\nGitHub should now display the correct project README.\")",
-      "Bash(git push origin main)"
+      "Bash(git push origin main)",
+      "Bash(wc -l \"/home/enicay/Documents/Dev_Folder/openpark_oblique_mode (Copy)/themepark_engine/data/objects.json\")",
+      "Bash(wc -l \"/home/enicay/Documents/Dev_Folder/openpark_oblique_mode (Copy)/themepark_engine/agents.py\")"
     ],
     "deny": [],
     "ask": []

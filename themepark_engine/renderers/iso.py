@@ -139,6 +139,9 @@ class IsoRenderer:
         self.shop_entrance_tile, self.shop_entrance_off = self._build_tile((0,255,100,255))  # Light green for shop entrance
         self.shop_footprint_tile, self.shop_footprint_off = self._build_tile((200,150,100,180))  # Brown for shop footprint
         self.queue_tile, self.queue_off = self._build_tile((255,165,0,255))  # Orange for queue paths
+        self.park_entrance_tile, self.park_entrance_off = self._build_tile((255,215,0,255))  # Gold for park entrance
+        self.restroom_footprint_tile, self.restroom_footprint_off = self._build_tile((180,130,200,180))  # Purple/lavender for restroom footprint
+        self.bin_tile, self.bin_off = self._build_tile((100,200,100,200))  # Green for bins
         self.hl_ok,      self.hl_ok_off = self._build_tile((255,255,0,80))
         self.hl_bad,     self.hl_bad_off= self._build_tile((255,0,0,80))
         self.hl_preview, self.hl_preview_off = self._build_tile((0,255,255,60))
@@ -185,6 +188,9 @@ class IsoRenderer:
             elif t==5: self._blit_tile(self.queue_tile, self.queue_off, sx, sy)
             elif t==6: self._blit_tile(self.shop_entrance_tile, self.shop_entrance_off, sx, sy)
             elif t==7: self._blit_tile(self.shop_footprint_tile, self.shop_footprint_off, sx, sy)
+            elif t==8: self._blit_tile(self.park_entrance_tile, self.park_entrance_off, sx, sy)
+            elif t==9: self._blit_tile(self.restroom_footprint_tile, self.restroom_footprint_off, sx, sy)
+            elif t==10: self._blit_tile(self.bin_tile, self.bin_off, sx, sy)
             else: self._blit_tile(self.grass_tile, self.grass_off, sx, sy)
 
     def draw_objects(self, objects):

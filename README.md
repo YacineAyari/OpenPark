@@ -4,7 +4,7 @@
 
 OpenPark est une simulation de parc d'attractions en **projection oblique**, développée en Python avec Pygame. Gérez votre parc, construisez des attractions, employez du personnel, et gardez vos visiteurs heureux!
 
-![Version](https://img.shields.io/badge/version-0.3.0--alpha-orange)
+![Version](https://img.shields.io/badge/version-0.3.1--alpha-orange)
 ![Python](https://img.shields.io/badge/python-3.8+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![AI-Powered](https://img.shields.io/badge/AI--Powered-Claude%20%26%20GPT-purple)
@@ -25,11 +25,13 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 #### 💡 Exemples d'accomplissements en vibe coding (sessions de quelques heures):
 
 - ✅ **Système d'employés complet** (4 types avec IA complexe, pathfinding personnalisé)
+- ✅ **Système de besoins des visiteurs** (hunger/thirst/bladder, IA prioritaire, toilettes multi-tailles)
+- ✅ **Système de temps et vitesse** (temps in-game, pause/x1/x2/x3, ouverture/fermeture parc)
 - ✅ **Système de satisfaction dynamique** (15+ facteurs influençant le comportement des visiteurs)
 - ✅ **Files d'attente serpentines** (détection automatique de patterns, mouvements directionnels)
 - ✅ **Gestion du litter** (state machine visiteurs, assignation automatique d'employés)
 - ✅ **Projection oblique configurable** (math oblique, picking inverse, debug controls)
-- ✅ **UI temps réel** (stats colorées, indicateurs visuels, feedback instantané)
+- ✅ **UI temps réel** (stats colorées, indicateurs visuels, feedback instantané, coloration tuiles)
 
 **Résultat**: Un moteur de jeu complet et fonctionnel développé entièrement via conversation avec IA! 🚀
 
@@ -56,18 +58,26 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 #### 🏗️ **Système de construction**
 - **Chemins piétonniers** - Réseau de paths pour la circulation des visiteurs
 - **Attractions** (Rides) - Placement multi-tuiles avec entrées/sorties
-- **Boutiques** (Shops) - Génération de revenus et de litter
+- **Boutiques** (Shops) - 3 types (food/drink/souvenir), génération de revenus
+- **Toilettes** (Restrooms) - 4 tailles (1x1, 2x1, 2x2, 3x2), capacité 2 à 8 visiteurs
 - **Poubelles** - Gestion de la propreté du parc
 - **Files d'attente** - Système de queues linéaires et serpentines
 
 #### 👥 **Intelligence Artificielle des visiteurs**
-- **State machine complète** - 11 états différents (wandering, queuing, riding, shopping, etc.)
+- **State machine complète** - 11+ états différents (wandering, queuing, riding, shopping, eating, drinking, using_restroom, etc.)
 - **Préférences personnalisées** - Tolérance au thrill et à la nausée
 - **Système de satisfaction dynamique** - Happiness, Excitement, Satisfaction
   - Dégradation naturelle au fil du temps
   - Bonus: rides, shopping, propreté, queues courtes
   - Pénalités: attente, litter, pannes, queues longues
+- **Système de besoins (Needs)** - Hunger, Thirst, Bladder
+  - Hunger: Décroît à -0.00333/s (satisfaction si > 0.3)
+  - Thirst: Décroît à -0.005/s (plus rapide que hunger)
+  - Bladder: Augmente à +0.00267/s (urgent si > 0.7)
+  - **IA prioritaire**: Bladder > 70% → Toilettes / Thirst < 30% → Boissons / Hunger < 30% → Nourriture
+  - Pénalités de satisfaction si besoins non satisfaits
 - **Gestion du litter** - Les visiteurs cherchent des poubelles ou jettent par terre
+- **Budget personnel** - $75-$300 par visiteur, dépenses pour nourriture/boissons
 
 #### 👷 **Système d'employés (4 types)**
 - **Engineers** - Réparent les attractions en panne, marchent partout
@@ -78,13 +88,33 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 #### 🎨 **Rendu et Interface**
 - **Projection oblique configurable** - Angle φ ajustable, taille de tuiles personnalisable
 - **Feedback visuel en temps réel** - Indicateurs colorés de satisfaction (🟢🟡🔴)
-- **Panneau de statistiques** - Cash, visiteurs, satisfaction moyenne, employés, litter
+- **Coloration des tuiles sur la grille** - Identification visuelle claire:
+  - Rides: Bleu (100, 100, 200)
+  - Shops: Marron (200, 150, 100)
+  - Restrooms: Violet/Lavande (180, 130, 200)
+  - Bins: Vert (100, 200, 100)
+  - Park Entrance: Doré (255, 215, 0)
+- **Panneau de statistiques** - Cash, visiteurs, satisfaction moyenne, employés, litter, temps, prix d'entrée
 - **Caméra libre** - Pan (WASD/arrows), zoom (+/-), drag (middle-click)
 
 #### 💰 **Système économique**
-- **Revenus** - Income des boutiques quand les visiteurs achètent
+- **Prix d'entrée du parc** - Configurable via UI ($50 par défaut), refus si budget insuffisant
+- **Revenus** - Prix d'entrée + boutiques + attractions
 - **Dépenses** - Coûts de construction, salaires des employés
 - **Gestion du cash** - Suivi en temps réel des finances
+- **Stats détaillées** - Visiteurs refusés, revenus total, dépenses
+
+#### ⏰ **Système de temps et gestion**
+- **Temps in-game** - 1 jour = 12 minutes réelles (configurable)
+- **Affichage jour/heure** - Format "Day X HH:MM" en temps réel
+- **Ouverture/fermeture du parc** - Touche 'O' pour toggle (démarre fermé)
+- **Évacuation automatique** - Visiteurs sortent à la fermeture
+- **Durée de visite** - Visiteurs restent max 10 jours in-game
+- **Système de vitesse du jeu**:
+  - **Pause** (Space) - game_speed = 0, fige tous les entités
+  - **Normal** (1) - game_speed = 1.0, vitesse standard
+  - **Rapide** (2) - game_speed = 2.0, accéléré x2
+  - **Très rapide** (3) - game_speed = 3.0, accéléré x3
 
 #### 🔧 **Gameplay**
 - **Pannes d'attractions** - Probabilité de breakdown, évacuation des queues
@@ -107,23 +137,14 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
   - Les visiteurs avec satisfaction < 20% quittent le parc
   - Perte de revenus potentiels, indicateur de performance
 
-- [ ] **Prix d'entrée du parc / Tickets de rides**
-  - Décision: entrée unique OU tickets par attraction
-  - Revenue stream régulier
-  - Impact sur satisfaction si trop cher
-
-- [ ] **Besoins des visiteurs (faim, soif, toilettes)**
-  - Système de needs avec dégradation temporelle
-  - Nouveaux bâtiments: toilettes, restaurants
-  - Pénalités de satisfaction si besoins non satisfaits
-
-- [ ] **Système de pause/vitesse**
-  - Pause, vitesse x1, x2, x3
-  - Gestion plus facile aux moments critiques
-
 - [ ] **Sauvegarde/chargement**
   - Sérialisation JSON de l'état du parc
   - Load/Save depuis le menu
+
+- [ ] **Ajouter plus d'attractions**
+  - Roller coaster, Ferris wheel, Monorail
+  - Haunted house, Water rides
+  - Variété pour améliorer l'expérience
 
 #### 🚀 **Priorité MOYENNE (Améliorations majeures)**
 
@@ -137,10 +158,10 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
   - Impact sur préférences rides (indoor vs outdoor)
   - Variations de revenus dynamiques
 
-- [ ] **Restaurants et stands de nourriture**
-  - Différents types: fast-food, restaurant, stands
-  - Satisfont la faim et génèrent revenus
-  - Différents des shops actuels
+- [ ] **Animations des attractions**
+  - Animations pendant le fonctionnement
+  - Effets visuels (rotation, mouvement)
+  - Indicateurs visuels de l'état (ouvert/fermé/en panne)
 
 #### 🎨 **Priorité BASSE (Polish)**
 
@@ -191,9 +212,17 @@ python run.py
 - **Left-click + Drag** - Tracer des chemins en continu
 - **Right-click** - Annuler le placement
 
+### Gestion du parc
+- **O** - Ouvrir/Fermer le parc
+- **Space** - Pause
+- **1** - Vitesse normale (x1)
+- **2** - Vitesse rapide (x2)
+- **3** - Vitesse très rapide (x3)
+
 ### Interface
-- **Toolbar (bas d'écran)** - Sélectionner chemins, rides, shops, employés, outils
+- **Toolbar (bas d'écran)** - Sélectionner chemins, rides, shops, employés, outils, toilettes, poubelles
 - **Debug Menu** - Toggle logs, ajuster projection oblique
+- **Stats HUD** - Affichage temps, cash, visiteurs, prix d'entrée
 
 ---
 
@@ -207,13 +236,16 @@ openpark/
 │   ├── engine.py           # Boucle principale du jeu
 │   ├── agents.py           # IA des visiteurs (state machine)
 │   ├── rides.py            # Système d'attractions
-│   ├── shops.py            # Boutiques
+│   ├── shops.py            # Boutiques (food/drink/souvenir)
+│   ├── restrooms.py        # Toilettes (4 tailles)
 │   ├── employees.py        # 4 types d'employés
 │   ├── queues.py           # Files d'attente (linéaires)
 │   ├── serpent_queue.py    # Files serpentines
-│   ├── litter.py           # Système de déchets
+│   ├── litter.py           # Système de déchets et poubelles
 │   ├── economy.py          # Gestion financière
 │   ├── map.py              # Grille de tuiles
+│   ├── pathfinding.py      # Algorithme A*
+│   ├── debug.py            # Système de debug centralisé
 │   ├── renderers/
 │   │   └── iso.py          # Projection oblique
 │   └── data/

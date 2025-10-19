@@ -2,11 +2,12 @@
 import json, pygame, math
 from pathlib import Path
 from . import assets
-from .map import MapGrid, TILE_WALK, TILE_GRASS, TILE_RIDE_ENTRANCE, TILE_RIDE_EXIT, TILE_RIDE_FOOTPRINT, TILE_QUEUE_PATH, TILE_SHOP_ENTRANCE, TILE_SHOP_FOOTPRINT
+from .map import MapGrid, TILE_WALK, TILE_GRASS, TILE_RIDE_ENTRANCE, TILE_RIDE_EXIT, TILE_RIDE_FOOTPRINT, TILE_QUEUE_PATH, TILE_SHOP_ENTRANCE, TILE_SHOP_FOOTPRINT, TILE_PARK_ENTRANCE, TILE_RESTROOM_FOOTPRINT, TILE_BIN
 from .pathfinding import astar
 from .agents import Guest
 from .rides import Ride, RideDef, RideEntrance, RideExit
 from .shops import Shop, ShopDef, ShopEntrance
+from .restrooms import Restroom, RestroomDef
 from .employees import EmployeeDef, Engineer, MaintenanceWorker, SecurityGuard, Mascot
 from .economy import Economy
 from .ui import Toolbar
@@ -33,26 +34,33 @@ class Game:
         self.shop_defs = {s['id']: ShopDef(**s) for s in data.get('shops', [])}
         self.employee_defs = {e['id']: EmployeeDef(**e) for e in data.get('employees', [])}
         self.bin_defs = {b['id']: BinDef(**b) for b in data.get('bins', [])}  # Load bin definitions
+        self.restroom_defs = {r['id']: RestroomDef(**r) for r in data.get('restrooms', [])}  # Load restroom definitions
         self.proj_presets = [tuple(p) for p in data.get('projection_presets', [(64,32)])]
         default_proj = tuple(data.get('projection_default', [64,32]))
         default_tilt = float(data.get('tilt_default', 10.0))
-        self.rides = []; self.shops = []; self.employees = []
-        # Créer des visiteurs avec des positions différentes
+
+        # Load time system configuration
+        time_config = data.get('time_system', {})
+        self.day_duration_real_minutes = time_config.get('day_duration_minutes', 12.0)
+        self.starting_hour = time_config.get('starting_hour', 9)
+        self.max_visitor_stay_days = time_config.get('max_visitor_stay_days', 10)
+
+        self.rides = []; self.shops = []; self.employees = []; self.restrooms = []
+        # Guests will be spawned at park entrance
         import random
         self.guests = []
-        for i in range(8):
-            # Positionner les visiteurs à différents endroits
-            x = random.randint(5, 15) + random.random()
-            y = random.randint(5, 15) + random.random()
-            self.guests.append(Guest(x, y))
         self.spr_guest = assets.load_image('guest'); self.spr_cache = {}
         # Oblique tilt default at 10°
         self.renderer = IsoRenderer(self.screen, self.font, default_proj[0], default_proj[1], oblique_tilt=default_tilt)
         self.proj_index = max(0, self.proj_presets.index(default_proj) if default_proj in self.proj_presets else 0)
         self.debug_menu = DebugMenu(self.font, self.proj_presets, self.proj_index, oblique_tilt=default_tilt)
-        self.toolbar = Toolbar(self.font, self.ride_defs, self.shop_defs, self.employee_defs, self.bin_defs)
+        self.toolbar = Toolbar(self.font, self.ride_defs, self.shop_defs, self.employee_defs, self.bin_defs, self.restroom_defs)
         self.dragging=False; self.drag_start=(0,0); self.cam_start=(0,0)
         self.path_dragging=False; self.last_path_pos=None
+
+        # Entrance fee configuration panel
+        self.entrance_fee_panel_open = False
+        self.entrance_fee_slider_dragging = False
         self.ride_placement_mode = None  # 'ride', 'entrance', 'exit'
         self.selected_ride = None
         self.shop_placement_mode = None  # 'shop', 'entrance'
@@ -64,7 +72,48 @@ class Game:
         self.serpent_manager = SerpentQueueManager()
         self.serpent_mode = False  # Toggle for serpent queue placement
         self.serpent_start_pos = None  # Start position for serpent queue
-        
+
+        # Park entrance system
+        self.park_entrance = None  # (x, y) tuple for entrance center
+        self.entrance_width = 5  # 5 tiles wide
+        self.guest_spawn_timer = 0.0  # Timer for spawning guests
+        self.guest_spawn_rate = self._calculate_spawn_rate()  # Dynamic spawn rate based on entrance fee
+        self.guests_entered = 0  # Track total guests entered
+        self.guests_left = 0  # Track total guests who left
+
+        # Time system
+        self.game_time = 0.0  # Game time in seconds (in-game)
+        self.game_speed = 1.0  # Current game speed (0=paused, 1=normal, 2=fast, 3=very fast)
+        self.game_day = 1  # Current day
+        self.game_hour = self.starting_hour  # Current hour (0-23)
+        self.game_minute = 0  # Current minute (0-59)
+
+        # Park open/close system
+        self.park_open = False  # Park starts closed, player opens with 'O' key
+        self.park_just_closed = False  # Flag to trigger evacuation
+
+        # Create park entrance at south center of map
+        self._create_park_entrance()
+
+        # Center camera on park entrance at game start
+        if self.park_entrance:
+            # Calculate world position of entrance (before camera offset)
+            gx, gy = self.park_entrance
+            tw, th = self.renderer.tile_size()
+            entrance_world_x = (gx + gy * self.renderer._skew) * tw
+            entrance_world_y = gy * th
+
+            # Calculate camera offset to center entrance in viewport
+            screen_center_x = self.screen.get_width() // 2
+            # Position entrance at 70% of screen height (lower on screen, more space above)
+            screen_entrance_y = int(self.screen.get_height() * 0.70)
+
+            # Camera position that puts entrance centered horizontally and lower vertically
+            self.renderer.camera.x = entrance_world_x + self.renderer.origin[0] - screen_center_x
+            self.renderer.camera.y = entrance_world_y + self.renderer.origin[1] - screen_entrance_y
+
+            DebugConfig.log('engine', f"Camera centered on park entrance at grid ({gx}, {gy})")
+
         # No test objects - let the game start normally
 
     def sprite(self, name:str):
@@ -332,6 +381,29 @@ class Game:
                 if e.key==pygame.K_ESCAPE: return False, placing, hover
                 elif e.key in (pygame.K_EQUALS, pygame.K_PLUS): self.renderer.camera.set_zoom(self.renderer.camera.zoom+0.1); self.renderer._recalc(); self.renderer._rebuild_surfaces()
                 elif e.key==pygame.K_MINUS: self.renderer.camera.set_zoom(self.renderer.camera.zoom-0.1); self.renderer._recalc(); self.renderer._rebuild_surfaces()
+
+                # Game speed controls
+                elif e.key==pygame.K_SPACE:
+                    # Toggle pause
+                    self.game_speed = 1.0 if self.game_speed == 0 else 0
+                    DebugConfig.log('engine', f"Game speed: {'PAUSED' if self.game_speed == 0 else 'x1'}")
+                elif e.key==pygame.K_1:
+                    self.game_speed = 1.0
+                    DebugConfig.log('engine', "Game speed: x1")
+                elif e.key==pygame.K_2:
+                    self.game_speed = 2.0
+                    DebugConfig.log('engine', "Game speed: x2")
+                elif e.key==pygame.K_3:
+                    self.game_speed = 3.0
+                    DebugConfig.log('engine', "Game speed: x3")
+
+                # Park open/close toggle
+                elif e.key==pygame.K_o:
+                    self.park_open = not self.park_open
+                    if not self.park_open:
+                        self.park_just_closed = True  # Trigger evacuation
+                    status = "OPEN" if self.park_open else "CLOSED"
+                    DebugConfig.log('engine', f"Park is now {status}")
             if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
                 action = self.debug_menu.handle_mouse(e)
                 if action:
@@ -355,15 +427,45 @@ class Game:
                     if e.button==2:
                         self.dragging=True; self.drag_start=e.pos; self.cam_start=(self.renderer.camera.x, self.renderer.camera.y)
                     elif e.button==1:
+                        # Handle entrance fee panel interactions first (modal priority)
+                        if self.entrance_fee_panel_open:
+                            # Check if clicking on close button
+                            if hasattr(self, 'entrance_fee_close_button_rect') and self.entrance_fee_close_button_rect.collidepoint(e.pos):
+                                self.entrance_fee_panel_open = False
+                                continue
+                            # Check if clicking on slider
+                            elif hasattr(self, 'entrance_fee_slider_rect') and self.entrance_fee_slider_rect.collidepoint(e.pos):
+                                self.entrance_fee_slider_dragging = True
+                                # Calculate new fee based on click position
+                                slider_x = self.entrance_fee_slider_rect.x
+                                slider_width = self.entrance_fee_slider_rect.width
+                                click_ratio = (e.pos[0] - slider_x) / slider_width
+                                click_ratio = max(0.0, min(1.0, click_ratio))
+                                new_fee = int(self.entrance_fee_slider_min + click_ratio * (self.entrance_fee_slider_max - self.entrance_fee_slider_min))
+                                self.set_entrance_fee(new_fee)
+                                continue
+                            # Click outside panel closes it
+                            else:
+                                panel_width = 400
+                                panel_height = 300
+                                panel_x = (self.screen.get_width() - panel_width) // 2
+                                panel_y = (self.screen.get_height() - panel_height) // 2
+                                panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
+                                if not panel_rect.collidepoint(e.pos):
+                                    self.entrance_fee_panel_open = False
+                                continue
+
                         gx,gy=self.renderer.screen_to_grid(*e.pos); hover=(gx,gy)
                         # Vérifier si le clic est dans la toolbar ou ses sous-menus
                         screen_height = self.screen.get_height()
                         toolbar_y = screen_height - 48
                         if e.pos[1] >= toolbar_y or self._is_in_toolbar_area(e.pos, screen_height):
                             clicked=self.toolbar.handle_click(e.pos, screen_height)
-                            if clicked=='debug_toggle': 
+                            if clicked=='debug_toggle':
                                 self.debug_menu.toggle()
-                            elif clicked and clicked not in ['paths', 'rides', 'shops', 'employees', 'tools']: 
+                            elif clicked=='entrance_fee_config':
+                                self.entrance_fee_panel_open = not self.entrance_fee_panel_open
+                            elif clicked and clicked not in ['paths', 'rides', 'shops', 'employees', 'tools', 'bins']: 
                                 placing=self.toolbar.active
                                 # Reset placement modes when selecting a new tool
                                 if not placing.startswith('ride_'):
@@ -372,6 +474,9 @@ class Game:
                                 if not placing.startswith('shop_'):
                                     self.shop_placement_mode = None
                                     self.selected_shop = None
+                                if not placing.startswith('restroom_'):
+                                    self.restroom_placement_mode = None
+                                    self.selected_restroom = None
                                 if not placing.startswith('employee_'):
                                     self.employee_placement_mode = None
                         else:
@@ -382,8 +487,9 @@ class Game:
                                     if not self._is_on_ride(gx, gy):
                                         self.grid.set(gx,gy,TILE_WALK)
                                         self.path_dragging=True; self.last_path_pos=(gx,gy)
-                                        # Check shop connections when placing walk paths
+                                        # Check shop and restroom connections when placing walk paths
                                         self._update_shop_connections()
+                                        self._update_restroom_connections()
                                 elif placing=='queue_path':
                                     if not self._is_on_ride(gx, gy):
                                         # Place the queue tile
@@ -453,6 +559,20 @@ class Game:
                                         # Exit placement mode
                                         self.shop_placement_mode = None
                                         self.selected_shop = None
+                                elif placing.startswith('restroom_'):
+                                    # Handle restroom placement (like bins - adjacent to walk paths)
+                                    rd = self.restroom_defs.get(placing)
+                                    if rd and self._can_place_restroom(rd, gx, gy):
+                                        # Check if restroom is adjacent to a walk path
+                                        if self._is_restroom_adjacent_to_path(rd, gx, gy):
+                                            new_restroom = Restroom(rd, gx, gy)
+                                            self.restrooms.append(new_restroom)
+                                            self.economy.add_expense(rd.build_cost)
+                                            # Mark the restroom footprint on the map
+                                            self._mark_restroom_footprint(new_restroom)
+                                            # Check path connection
+                                            self._check_restroom_path_connection(new_restroom)
+                                            DebugConfig.log('engine', f"Placed {rd.name} at ({gx}, {gy})")
                                 elif placing.startswith('employee_'):
                                     # Handle employee placement
                                     employee_def = self.employee_defs.get(placing)
@@ -510,6 +630,7 @@ class Game:
                                                 if not existing_bin:
                                                     bin_obj = self.litter_manager.add_bin(bin_def, gx, gy)
                                                     if bin_obj:
+                                                        self.grid.set(gx, gy, TILE_BIN)
                                                         self.economy.add_expense(bin_def.cost)
                                                         DebugConfig.log('engine', f"Placed {bin_def.name} at ({gx}, {gy}) for ${bin_def.cost}")
                                                 else:
@@ -548,10 +669,23 @@ class Game:
                                 if self.selected_shop == shop:
                                     self.shop_placement_mode = None
                                     self.selected_shop = None
+                            # Check if clicking on a restroom
+                            restroom = self._get_restroom_at_position(gx, gy)
+                            if restroom:
+                                # Remove restroom footprint
+                                self._clear_restroom_footprint(restroom)
+                                # Remove from list
+                                self.restrooms.remove(restroom)
                             # Check if clicking on an employee
                             employee = self._get_employee_at_position(gx, gy)
                             if employee:
                                 self.employees.remove(employee)
+                            # Check if clicking on a bin
+                            bin_obj = self.litter_manager.get_bin_at(gx, gy)
+                            if bin_obj:
+                                self.litter_manager.remove_bin(bin_obj)
+                                self.grid.set(gx, gy, TILE_GRASS)
+                                DebugConfig.log('engine', f"Removed bin at ({gx}, {gy})")
                             else:
                                 # Check if clicking on a queue tile
                                 if self.grid.get(gx, gy) == TILE_QUEUE_PATH:
@@ -563,13 +697,22 @@ class Game:
                                     self.grid.set(gx,gy,TILE_GRASS)
                 elif e.type==pygame.MOUSEBUTTONUP:
                     if e.button==2: self.dragging=False
-                    elif e.button==1: 
-                        self.path_dragging=False; 
+                    elif e.button==1:
+                        self.entrance_fee_slider_dragging = False
+                        self.path_dragging=False
                         self.last_path_pos=None
                         self.last_queue_pos=None
                         self.last_mouse_pos=None
                 elif e.type==pygame.MOUSEMOTION:
-                    if self.dragging:
+                    # Handle entrance fee slider dragging
+                    if self.entrance_fee_slider_dragging and hasattr(self, 'entrance_fee_slider_rect'):
+                        slider_x = self.entrance_fee_slider_rect.x
+                        slider_width = self.entrance_fee_slider_rect.width
+                        drag_ratio = (e.pos[0] - slider_x) / slider_width
+                        drag_ratio = max(0.0, min(1.0, drag_ratio))
+                        new_fee = int(self.entrance_fee_slider_min + drag_ratio * (self.entrance_fee_slider_max - self.entrance_fee_slider_min))
+                        self.set_entrance_fee(new_fee)
+                    elif self.dragging:
                         dx=e.pos[0]-self.drag_start[0]
                         dy=e.pos[1]-self.drag_start[1]
                         self.renderer.camera.x=self.cam_start[0]-dx
@@ -603,13 +746,237 @@ class Game:
         mx,my=pygame.mouse.get_pos(); hover=self.renderer.screen_to_grid(mx,my)
         return True, placing, hover
 
+    def _create_park_entrance(self):
+        """Create fixed park entrance at south center of map"""
+        # Calculate entrance position: south center of map
+        entrance_x = self.grid.width // 2 - (self.entrance_width // 2)  # Center the entrance
+        entrance_y = self.grid.height - 3  # 3 tiles from bottom
+
+        # Store entrance center position for guest spawning
+        self.park_entrance = (entrance_x + self.entrance_width // 2, entrance_y)
+
+        # Mark entrance tiles (TILE_PARK_ENTRANCE)
+        for x in range(entrance_x, entrance_x + self.entrance_width):
+            if self.grid.in_bounds(x, entrance_y):
+                self.grid.set(x, entrance_y, TILE_PARK_ENTRANCE)
+
+        # Add walkable path in front of entrance (connection to park)
+        for x in range(entrance_x, entrance_x + self.entrance_width):
+            if self.grid.in_bounds(x, entrance_y - 1):
+                self.grid.set(x, entrance_y - 1, TILE_WALK)
+
+        DebugConfig.log('engine', f"Park entrance created at {self.park_entrance} (width: {self.entrance_width} tiles)")
+
+    def _calculate_spawn_rate(self):
+        """Calculate guest spawn rate based on entrance fee (progressive system)
+
+        Lower entrance fee = faster spawning (more guests)
+        Higher entrance fee = slower spawning (fewer guests)
+
+        Formula: spawn_rate = 2.0 + (entrance_fee / 100) * 4.0
+
+        Examples:
+        - $10 fee → 2.4s (fast)
+        - $50 fee → 4.0s (normal)
+        - $100 fee → 6.0s (slow)
+        - $200 fee → 10.0s (very slow)
+        """
+        entrance_fee = self.economy.park_entrance_fee
+        spawn_rate = 2.0 + (entrance_fee / 100.0) * 4.0
+        return max(1.0, min(15.0, spawn_rate))  # Clamp between 1s and 15s
+
+    def set_entrance_fee(self, amount):
+        """Set park entrance fee and recalculate spawn rate"""
+        self.economy.set_entrance_fee(amount)
+        self.guest_spawn_rate = self._calculate_spawn_rate()
+        DebugConfig.log('engine', f"Entrance fee set to ${amount}, spawn rate: {self.guest_spawn_rate:.1f}s")
+
+    def _spawn_guests_at_entrance(self, dt):
+        """Spawn guests at park entrance at regular intervals"""
+        if not self.park_entrance:
+            return  # No entrance created yet
+
+        # Only spawn guests if park is open
+        if not self.park_open:
+            return
+
+        self.guest_spawn_timer += dt
+
+        # Spawn a new guest when timer exceeds spawn rate
+        if self.guest_spawn_timer >= self.guest_spawn_rate:
+            self.guest_spawn_timer = 0.0  # Reset timer
+
+            # Spawn guest at entrance position (with slight random offset for variety)
+            import random
+            offset_x = random.uniform(-1.5, 1.5)  # Spread guests across entrance width
+            spawn_x = self.park_entrance[0] + offset_x
+            spawn_y = self.park_entrance[1]
+
+            # Create potential guest and check if they can afford entrance fee
+            new_guest = Guest(spawn_x, spawn_y)
+            entrance_fee = self.economy.park_entrance_fee
+
+            # Check if guest can afford entrance fee
+            if new_guest.budget >= entrance_fee:
+                # Guest can afford - deduct entrance fee and spawn them
+                new_guest.money -= entrance_fee
+                new_guest.entry_time = self.game_time  # Record entry time for stay limit
+                self.economy.collect_entrance_fee(entrance_fee)
+                self.guests.append(new_guest)
+                self.guests_entered += 1
+
+                DebugConfig.log('engine', f"Guest {new_guest.id} entered park (paid ${entrance_fee}, has ${new_guest.money} left). Total entered: {self.guests_entered}")
+            else:
+                # Guest cannot afford - refuse entry
+                self.economy.guests_refused += 1
+                DebugConfig.log('engine', f"Guest refused entry (budget ${new_guest.budget} < fee ${entrance_fee}). Total refused: {self.economy.guests_refused}")
+
+    def _evacuate_park(self):
+        """Force all guests to leave the park when it closes"""
+        if not self.park_entrance:
+            return
+
+        from .pathfinding import astar
+
+        evacuation_count = 0
+        for guest in self.guests:
+            # Only evacuate guests who are not already leaving
+            if guest.state != "leaving":
+                guest_pos = (int(guest.x), int(guest.y))
+                entrance_pos = self.park_entrance
+
+                # Find path to park entrance
+                path = astar(self.grid, guest_pos, entrance_pos)
+
+                if path and len(path) > 1:
+                    guest.path = path[1:]  # Skip current position
+                else:
+                    # Can't find path, teleport to entrance
+                    guest.x = float(entrance_pos[0])
+                    guest.y = float(entrance_pos[1])
+                    guest.grid_x = entrance_pos[0]
+                    guest.grid_y = entrance_pos[1]
+                    guest.path = []
+
+                # Set guest to leaving state
+                guest.state = "leaving"
+                guest.target_ride = None
+                guest.target_shop = None
+                guest.target_queue = None
+                guest.current_queue = None
+                evacuation_count += 1
+
+        if evacuation_count > 0:
+            DebugConfig.log('engine', f"Park closed - evacuating {evacuation_count} guests")
+
+    def _handle_leaving_guests(self):
+        """Handle guests wanting to leave the park (unhappy or satisfied)"""
+        if not self.park_entrance:
+            return  # No entrance to leave from
+
+        guests_to_remove = []
+
+        for guest in self.guests:
+            # Calculate time in park (in-game days)
+            time_in_park_seconds = self.game_time - guest.entry_time
+            time_in_park_days = time_in_park_seconds / 86400.0  # 86400 seconds = 1 day
+
+            # Check if guest should leave
+            # Reasons: unhappy (satisfaction < 20%), stayed too long (> max_visitor_stay_days), or no money left
+            should_leave = False
+            leave_reason = ""
+
+            if guest.satisfaction < 0.2:
+                should_leave = True
+                leave_reason = f"unhappy (satisfaction: {guest.satisfaction:.2f})"
+            elif time_in_park_days > self.max_visitor_stay_days:
+                should_leave = True
+                leave_reason = f"max stay exceeded ({time_in_park_days:.1f} days > {self.max_visitor_stay_days} days)"
+            elif guest.money <= 0:
+                should_leave = True
+                leave_reason = "out of money"
+
+            if guest.state != "leaving" and should_leave:
+                # Guest is unhappy and wants to leave
+                guest_pos = (int(guest.x), int(guest.y))
+                entrance_pos = self.park_entrance
+
+                # Find path to park entrance
+                path = astar(self.grid, guest_pos, entrance_pos)
+
+                if path and len(path) > 1:
+                    guest.path = path[1:]  # Skip current position
+                    guest.state = "leaving"
+                    guest.target_ride = None
+                    guest.target_shop = None
+                    guest.target_queue = None
+                    DebugConfig.log('engine', f"Guest {guest.id} is leaving ({leave_reason})")
+                else:
+                    # Can't find path to entrance, teleport to entrance
+                    guest.x = float(entrance_pos[0])
+                    guest.y = float(entrance_pos[1])
+                    guest.grid_x = entrance_pos[0]
+                    guest.grid_y = entrance_pos[1]
+                    guest.state = "leaving"
+                    guest.path = []
+                    DebugConfig.log('engine', f"Guest {guest.id} teleported to entrance (no path found)")
+
+            # Remove guests who have reached the entrance
+            if guest.state == "leaving" and not guest.path and not guest.is_moving:
+                guests_to_remove.append(guest)
+                self.guests_left += 1
+                DebugConfig.log('engine', f"Guest {guest.id} left the park. Total left: {self.guests_left}")
+
+        # Remove guests who have left
+        for guest in guests_to_remove:
+            self.guests.remove(guest)
+
     def update(self, dt):
+        # Calculate scaled delta time based on game speed
+        # When paused (game_speed = 0), scaled_dt = 0, so entities don't move
+        scaled_dt = dt * self.game_speed
+
+        # Update game time based on speed (independent visual clock)
+        # 1 in-game day = day_duration_real_minutes real minutes at speed x1
+        # Speed multiplier: 0 (paused), 1 (normal), 2 (fast), 3 (very fast)
+        if self.game_speed > 0:
+            # Convert real time to game time
+            # day_duration_real_minutes real minutes = 24 hours = 1440 minutes = 86400 seconds in-game
+            seconds_per_real_second = (86400.0 / (self.day_duration_real_minutes * 60.0)) * self.game_speed
+            game_dt = dt * seconds_per_real_second
+            self.game_time += game_dt
+
+            # Calculate current day, hour, minute
+            total_seconds = self.game_time
+            total_minutes = int(total_seconds / 60)
+            total_hours = total_minutes / 60
+
+            # Calculate day (starting from day 1)
+            self.game_day = int(total_hours / 24) + 1
+
+            # Calculate hour and minute (starting from starting_hour)
+            hours_since_start = total_hours % 24
+            self.game_hour = int((self.starting_hour + hours_since_start) % 24)
+            self.game_minute = total_minutes % 60
+
+        # Handle park closure evacuation
+        if self.park_just_closed:
+            self._evacuate_park()
+            self.park_just_closed = False
+
+        # Spawn guests at park entrance (only if park is open and not paused)
+        if self.game_speed > 0:
+            self._spawn_guests_at_entrance(dt)
+
+        # Handle unhappy guests leaving the park
+        self._handle_leaving_guests()
+
         # Update queue system
         self._update_queue_system()
-        
+
         # Update litter manager
-        self.litter_manager.tick(dt)
-        
+        self.litter_manager.tick(scaled_dt)
+
         # Update guests
         pts=[(x,y) for y in range(self.grid.height) for x in range(self.grid.width) if self.grid.walkable(x,y)]
         import random
@@ -618,8 +985,9 @@ class Game:
             # Track guest state before tick
             previous_state = g.state
             previous_shop = g.current_shop
+            previous_target_shop = g.target_shop
 
-            g.tick(dt)
+            g.tick(scaled_dt)
 
             # Check if guest just finished shopping (state changed from SHOPPING to something else)
             if previous_state == "shopping" and g.state != "shopping" and previous_shop:
@@ -630,6 +998,20 @@ class Game:
 
                 # Apply shopping satisfaction bonus
                 g.apply_shopping_bonus()
+
+            # Check if guest just finished eating (state changed from EATING to something else)
+            if previous_state == "eating" and g.state != "eating" and previous_target_shop:
+                # Guest finished eating, add revenue (guest already paid in tick handler)
+                food_price = previous_target_shop.defn.base_price
+                self.economy.add_income(food_price)
+                DebugConfig.log('engine', f"Guest {g.id} finished eating at {previous_target_shop.defn.name}, revenue: ${food_price}")
+
+            # Check if guest just finished drinking (state changed from DRINKING to something else)
+            if previous_state == "drinking" and g.state != "drinking" and previous_target_shop:
+                # Guest finished drinking, add revenue (guest already paid in tick handler)
+                drink_price = previous_target_shop.defn.base_price
+                self.economy.add_income(drink_price)
+                DebugConfig.log('engine', f"Guest {g.id} finished drinking at {previous_target_shop.defn.name}, revenue: ${drink_price}")
 
             # Check if guest just finished riding (state changed from RIDING to EXITING)
             if previous_state == "riding" and g.state == "exiting":
@@ -648,7 +1030,7 @@ class Game:
         
         # Update employees
         for employee in self.employees:
-            employee.tick(dt)
+            employee.tick(scaled_dt)
             # Pay salary every hour (3600 seconds)
             if employee.salary_timer >= 3600.0:
                 self.economy.cash -= employee.defn.salary
@@ -676,7 +1058,7 @@ class Game:
 
         # Update rides
         for ride in self.rides:
-            ride.tick(dt)
+            ride.tick(scaled_dt)
         
         # Assign engineers to broken rides
         self._assign_engineers_to_broken_rides()
@@ -871,15 +1253,144 @@ class Game:
         for shop in self.shops:
             self._check_shop_path_connection(shop)
 
+    # ========== Restroom Helper Methods ==========
+    def _can_place_restroom(self, restroom_def, x, y):
+        """Vérifier si un restroom peut être placé à la position donnée"""
+        width, height = restroom_def.size
+
+        # Vérifier que toutes les tuiles sont dans les limites et libres
+        for dx in range(width):
+            for dy in range(height):
+                gx, gy = x + dx, y + dy
+                if not self.grid.in_bounds(gx, gy):
+                    return False
+                if self.grid.get(gx, gy) != TILE_GRASS:
+                    return False
+
+        return True
+
+    def _mark_restroom_footprint(self, restroom):
+        """Marquer l'empreinte du restroom sur la grille"""
+        width, height = restroom.defn.size
+        for dx in range(width):
+            for dy in range(height):
+                gx, gy = restroom.x + dx, restroom.y + dy
+                self.grid.set(gx, gy, TILE_RESTROOM_FOOTPRINT)
+
+    def _is_restroom_adjacent_to_path(self, restroom_def, x, y):
+        """Vérifier si le restroom serait adjacent à un chemin (comme les bins)"""
+        width, height = restroom_def.size
+
+        # Vérifier toutes les tuiles autour du périmètre du restroom
+        for dx in range(width):
+            for dy in range(height):
+                rx, ry = x + dx, y + dy
+                # Vérifier les 4 directions autour de cette tuile
+                for nx_offset, ny_offset in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                    nx, ny = rx + nx_offset, ry + ny_offset
+                    if self.grid.in_bounds(nx, ny) and self.grid.get(nx, ny) == TILE_WALK:
+                        return True
+        return False
+
+    def _check_restroom_path_connection(self, restroom):
+        """Vérifier si le restroom est connecté à un chemin"""
+        width, height = restroom.defn.size
+
+        # Vérifier toutes les tuiles autour du périmètre du restroom
+        for dx in range(width):
+            for dy in range(height):
+                rx, ry = restroom.x + dx, restroom.y + dy
+                # Vérifier les 4 directions autour de cette tuile
+                for nx_offset, ny_offset in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                    nx, ny = rx + nx_offset, ry + ny_offset
+                    if self.grid.in_bounds(nx, ny) and self.grid.get(nx, ny) == TILE_WALK:
+                        restroom.connected_to_path = True
+                        return
+
+        restroom.connected_to_path = False
+
+    def _get_restroom_at_position(self, x, y):
+        """Obtenir le restroom à une position donnée"""
+        for restroom in self.restrooms:
+            width, height = restroom.defn.size
+            if (restroom.x <= x < restroom.x + width and
+                restroom.y <= y < restroom.y + height):
+                return restroom
+        return None
+
+    def _clear_restroom_footprint(self, restroom):
+        """Effacer l'empreinte du restroom de la grille"""
+        width, height = restroom.defn.size
+        for dx in range(width):
+            for dy in range(height):
+                gx, gy = restroom.x + dx, restroom.y + dy
+                self.grid.set(gx, gy, TILE_GRASS)
+
+    def _update_restroom_connections(self):
+        """Mettre à jour les connexions de tous les restrooms"""
+        for restroom in self.restrooms:
+            self._check_restroom_path_connection(restroom)
+
     def _find_attraction_for_guest(self, guest):
         """Trouver une attraction (ride ou shop) pour un visiteur"""
         import random
-        
+
+        # ========== NEEDS-BASED PRIORITY SYSTEM ==========
+        # Check if guest has urgent needs (prioritize over attractions)
+
+        # Priority 1: Bladder (most urgent if > 0.7)
+        if guest.bladder > 0.7:
+            restroom, path = self._find_nearest_restroom(guest)
+            if restroom and path:
+                guest.path = path
+                guest.target_restroom = restroom
+                guest.state = "walking_to_restroom"
+                urgency = "CRITICAL" if guest.bladder > 0.85 else "urgent"
+                DebugConfig.log('engine', f"Guest {guest.id} has {urgency} bladder need ({guest.bladder:.2f}), walking to restroom")
+                return
+            else:
+                # No restroom available, apply penalty
+                DebugConfig.log('engine', f"Guest {guest.id} needs restroom but none available!")
+                guest.modify_satisfaction(-0.05, "no restroom available")
+
+        # Priority 2: Thirst (urgent if < 0.3)
+        if guest.thirst < 0.3:
+            drink_shop, path = self._find_nearest_drink_shop(guest)
+            if drink_shop and path:
+                guest.path = path
+                guest.target_shop = drink_shop
+                guest.state = "walking_to_drink"
+                urgency = "CRITICAL" if guest.thirst < 0.15 else "urgent"
+                DebugConfig.log('engine', f"Guest {guest.id} has {urgency} thirst ({guest.thirst:.2f}), walking to drink shop")
+                return
+            else:
+                # No drink shop available, apply penalty
+                DebugConfig.log('engine', f"Guest {guest.id} needs drink but none available!")
+                guest.modify_satisfaction(-0.03, "no drink shop available")
+
+        # Priority 3: Hunger (urgent if < 0.3)
+        if guest.hunger < 0.3:
+            food_shop, path = self._find_nearest_food_shop(guest)
+            if food_shop and path:
+                guest.path = path
+                guest.target_shop = food_shop
+                guest.state = "walking_to_food"
+                urgency = "CRITICAL" if guest.hunger < 0.15 else "urgent"
+                DebugConfig.log('engine', f"Guest {guest.id} has {urgency} hunger ({guest.hunger:.2f}), walking to food shop")
+                return
+            else:
+                # No food shop available, apply penalty
+                DebugConfig.log('engine', f"Guest {guest.id} needs food but none available!")
+                guest.modify_satisfaction(-0.03, "no food shop available")
+
+        # ========== NORMAL ATTRACTION FINDING ==========
+        # No urgent needs, proceed with normal behavior
+
         # 20% chance to just wander without targeting anything
         if random.random() < 0.2:
             DebugConfig.log('engine', f"Guest {guest.id} chose to just wander")
             return
-        
+
         # Probabilité de choisir un shop vs une attraction (30% shops, 70% rides)
         if random.random() < 0.3:
             # Chercher un shop
@@ -934,6 +1445,180 @@ class Game:
         else:
             DebugConfig.log('engine', f"No available attractions found for guest {guest.id}")
 
+    def _find_nearest_food_shop(self, guest):
+        """Trouver le food shop le plus proche pour un visiteur"""
+        nearest_shop = None
+        nearest_path = None
+        shortest_distance = float('inf')
+
+        for shop in self.shops:
+            # Only consider food shops that are connected to paths
+            if shop.defn.shop_type == "food" and shop.entrance and shop.connected_to_path:
+                shop_entrance = (shop.entrance.x, shop.entrance.y)
+                path = astar(self.grid, (guest.grid_x, guest.grid_y), shop_entrance)
+                if path:
+                    distance = len(path)
+                    if distance < shortest_distance:
+                        shortest_distance = distance
+                        nearest_shop = shop
+                        nearest_path = path[1:]  # Exclude current position
+
+        if nearest_shop:
+            return nearest_shop, nearest_path
+        return None, None
+
+    def _find_nearest_drink_shop(self, guest):
+        """Trouver le drink shop le plus proche pour un visiteur"""
+        nearest_shop = None
+        nearest_path = None
+        shortest_distance = float('inf')
+
+        for shop in self.shops:
+            # Only consider drink shops that are connected to paths
+            if shop.defn.shop_type == "drink" and shop.entrance and shop.connected_to_path:
+                shop_entrance = (shop.entrance.x, shop.entrance.y)
+                path = astar(self.grid, (guest.grid_x, guest.grid_y), shop_entrance)
+                if path:
+                    distance = len(path)
+                    if distance < shortest_distance:
+                        shortest_distance = distance
+                        nearest_shop = shop
+                        nearest_path = path[1:]  # Exclude current position
+
+        if nearest_shop:
+            return nearest_shop, nearest_path
+        return None, None
+
+    def _find_nearest_restroom(self, guest):
+        """Trouver le restroom le plus proche pour un visiteur"""
+        nearest_restroom = None
+        nearest_path = None
+        shortest_distance = float('inf')
+
+        for restroom in self.restrooms:
+            # Only consider restrooms that are connected to paths and not full
+            if restroom.connected_to_path and not restroom.is_full():
+                # Find the nearest walkable tile adjacent to the restroom
+                width, height = restroom.defn.size
+                best_target = None
+                best_path = None
+                best_dist = float('inf')
+
+                # Check all tiles around the restroom perimeter
+                for dx in range(width):
+                    for dy in range(height):
+                        rx, ry = restroom.x + dx, restroom.y + dy
+                        # Check adjacent tiles (WALK tiles only)
+                        for nx_offset, ny_offset in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                            nx, ny = rx + nx_offset, ry + ny_offset
+                            if self.grid.in_bounds(nx, ny) and self.grid.get(nx, ny) == TILE_WALK:
+                                # Try pathfinding to this tile
+                                path = astar(self.grid, (guest.grid_x, guest.grid_y), (nx, ny))
+                                if path and len(path) < best_dist:
+                                    best_dist = len(path)
+                                    best_target = (nx, ny)
+                                    best_path = path[1:]  # Exclude current position
+
+                if best_path and best_dist < shortest_distance:
+                    shortest_distance = best_dist
+                    nearest_restroom = restroom
+                    nearest_path = best_path
+
+        if nearest_restroom:
+            return nearest_restroom, nearest_path
+        return None, None
+
+    def _draw_entrance_fee_panel(self):
+        """Draw entrance fee configuration panel"""
+        if not self.entrance_fee_panel_open:
+            return
+
+        # Panel dimensions and position (centered on screen)
+        panel_width = 400
+        panel_height = 300
+        panel_x = (self.screen.get_width() - panel_width) // 2
+        panel_y = (self.screen.get_height() - panel_height) // 2
+
+        # Semi-transparent background overlay
+        overlay = pygame.Surface((self.screen.get_width(), self.screen.get_height()), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 150))
+        self.screen.blit(overlay, (0, 0))
+
+        # Panel background
+        panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
+        pygame.draw.rect(self.screen, (40, 40, 50), panel_rect)
+        pygame.draw.rect(self.screen, (100, 150, 200), panel_rect, 3)
+
+        # Title
+        title_text = "Configuration du Prix d'Entrée"
+        title_surf = self.font.render(title_text, True, (255, 255, 255))
+        title_rect = title_surf.get_rect(center=(panel_x + panel_width // 2, panel_y + 30))
+        self.screen.blit(title_surf, title_rect)
+
+        # Current fee display
+        current_fee = self.economy.park_entrance_fee
+        fee_text = f"Prix actuel: ${current_fee}"
+        fee_surf = self.font.render(fee_text, True, (200, 255, 200))
+        self.screen.blit(fee_surf, (panel_x + 20, panel_y + 70))
+
+        # Spawn rate display
+        spawn_rate_text = f"Affluence: 1 visiteur / {self.guest_spawn_rate:.1f}s"
+        spawn_surf = self.font.render(spawn_rate_text, True, (200, 200, 255))
+        self.screen.blit(spawn_surf, (panel_x + 20, panel_y + 95))
+
+        # Entrance revenue display
+        revenue_text = f"Revenus entrée: ${self.economy.entrance_revenue}"
+        revenue_surf = self.font.render(revenue_text, True, (255, 255, 150))
+        self.screen.blit(revenue_surf, (panel_x + 20, panel_y + 120))
+
+        # Guests refused display
+        refused_text = f"Visiteurs refusés: {self.economy.guests_refused}"
+        refused_surf = self.font.render(refused_text, True, (255, 150, 150))
+        self.screen.blit(refused_surf, (panel_x + 20, panel_y + 145))
+
+        # Slider for entrance fee ($5 - $300)
+        slider_x = panel_x + 20
+        slider_y = panel_y + 190
+        slider_width = panel_width - 40
+        slider_height = 20
+
+        # Slider background
+        slider_bg_rect = pygame.Rect(slider_x, slider_y, slider_width, slider_height)
+        pygame.draw.rect(self.screen, (80, 80, 90), slider_bg_rect)
+        pygame.draw.rect(self.screen, (150, 150, 160), slider_bg_rect, 2)
+
+        # Slider handle position (based on current fee: $5-$300)
+        min_fee = 5
+        max_fee = 300
+        fee_ratio = (current_fee - min_fee) / (max_fee - min_fee)
+        handle_x = slider_x + int(fee_ratio * slider_width)
+        handle_rect = pygame.Rect(handle_x - 8, slider_y - 4, 16, slider_height + 8)
+        pygame.draw.rect(self.screen, (100, 200, 255), handle_rect)
+        pygame.draw.rect(self.screen, (150, 220, 255), handle_rect, 2)
+
+        # Slider labels
+        min_label = self.font.render("$5", True, (200, 200, 200))
+        max_label = self.font.render("$300", True, (200, 200, 200))
+        self.screen.blit(min_label, (slider_x, slider_y + slider_height + 5))
+        max_label_rect = max_label.get_rect()
+        max_label_rect.right = slider_x + slider_width
+        max_label_rect.top = slider_y + slider_height + 5
+        self.screen.blit(max_label, max_label_rect)
+
+        # Store slider rect for mouse interaction
+        self.entrance_fee_slider_rect = slider_bg_rect
+        self.entrance_fee_slider_min = min_fee
+        self.entrance_fee_slider_max = max_fee
+
+        # Close button
+        close_button_rect = pygame.Rect(panel_x + panel_width - 80, panel_y + panel_height - 50, 60, 30)
+        pygame.draw.rect(self.screen, (80, 80, 100), close_button_rect)
+        pygame.draw.rect(self.screen, (150, 150, 180), close_button_rect, 2)
+        close_text = self.font.render("Fermer", True, (255, 255, 255))
+        close_text_rect = close_text.get_rect(center=close_button_rect.center)
+        self.screen.blit(close_text, close_text_rect)
+        self.entrance_fee_close_button_rect = close_button_rect
+
     def draw(self, hover=None):
         self.screen.fill((20,60,90))
         # Supprimer l'ancienne barre en haut
@@ -985,6 +1670,25 @@ class Game:
                 # Redimensionner pour le rendre plus visible
                 disconnected_sprite = pygame.transform.scale(disconnected_sprite, (16, 16))
                 objs.append((disconnected_sprite,(indicator_x,indicator_y)))
+
+        # Render restrooms
+        for r in self.restrooms:
+            # Centrer le sprite du restroom sur son empreinte
+            width, height = r.defn.size
+            center_x = r.x + width / 2 - 0.5
+            center_y = r.y + height / 2 - 0.5
+            objs.append((self.sprite(r.defn.sprite),(center_x,center_y)))
+
+            # Indicateur visuel si le restroom n'est pas connecté à un chemin
+            if not r.connected_to_path:
+                # Dessiner un indicateur rouge pour montrer que le restroom n'est pas accessible
+                indicator_x = center_x + width / 2 - 0.5
+                indicator_y = center_y - height / 2 + 0.5
+                # Utiliser un sprite pour l'indicateur
+                disconnected_sprite = self.sprite('shop_disconnected')  # Reuse shop disconnected sprite
+                disconnected_sprite = pygame.transform.scale(disconnected_sprite, (16, 16))
+                objs.append((disconnected_sprite,(indicator_x,indicator_y)))
+
         # Render guests with satisfaction indicators
         for g in self.guests:
             objs.append((self.spr_guest,(g.x,g.y)))  # Utiliser les positions flottantes pour le rendu
@@ -1114,12 +1818,18 @@ class Game:
         self.renderer.draw_objects(objs)
         if hover and self.grid.in_bounds(*hover):
             ok=True
-            if self.toolbar.active.startswith('shop_') and self.shop_placement_mode is None: 
+            if self.toolbar.active.startswith('shop_') and self.shop_placement_mode is None:
                 sd = self.shop_defs.get(self.toolbar.active)
                 if sd:
                     ok = self._can_place_shop(sd, *hover)
                     # Draw shop preview
                     self.renderer.draw_ride_preview(hover[0], hover[1], sd.size[0], sd.size[1], ok=ok)
+            elif self.toolbar.active.startswith('restroom_'):
+                rd = self.restroom_defs.get(self.toolbar.active)
+                if rd:
+                    ok = self._can_place_restroom(rd, *hover) and self._is_restroom_adjacent_to_path(rd, *hover)
+                    # Draw restroom preview
+                    self.renderer.draw_ride_preview(hover[0], hover[1], rd.size[0], rd.size[1], ok=ok)
             elif self.toolbar.active.startswith('ride_'):
                 rd = self.ride_defs.get(self.toolbar.active)
                 if rd:
@@ -1149,8 +1859,10 @@ class Game:
                 else:
                     ok = False
             
-            # Only draw single-tile highlight if not drawing ride preview
-            if not (self.toolbar.active.startswith('ride_') and self.ride_defs.get(self.toolbar.active)):
+            # Only draw single-tile highlight if not drawing multi-tile preview
+            if not ((self.toolbar.active.startswith('ride_') and self.ride_defs.get(self.toolbar.active)) or
+                    (self.toolbar.active.startswith('shop_') and self.shop_defs.get(self.toolbar.active) and self.shop_placement_mode is None) or
+                    (self.toolbar.active.startswith('restroom_') and self.restroom_defs.get(self.toolbar.active))):
                 self.renderer.draw_highlight(*hover, ok=ok)
         
         # Draw path preview when dragging
@@ -1197,25 +1909,66 @@ class Game:
         total_queues = len(queue_paths)
 
         # Draw stats panel (top-left corner)
-        stats_bg = pygame.Surface((380, 130), pygame.SRCALPHA)
+        stats_bg = pygame.Surface((550, 210), pygame.SRCALPHA)
         stats_bg.fill((20, 20, 20, 200))  # Semi-transparent dark background
         self.screen.blit(stats_bg, (8, 8))
 
         # Main HUD line
-        hud=f"Cash: ${self.economy.cash}  |  Guests: {num_guests}  |  Rides: {len(self.rides)}  |  Shops: {len(self.shops)}{mode_text}"
+        hud=f"Cash: ${self.economy.cash}  |  Guests: {num_guests} (In: {self.guests_entered} | Out: {self.guests_left})  |  Rides: {len(self.rides)}  |  Shops: {len(self.shops)}{mode_text}"
         self.screen.blit(self.font.render(hud,True,(255,255,255)),(12,12))
 
+        # Time and park status line
+        y_offset = 32
+        park_status_text = "OPEN" if self.park_open else "CLOSED"
+        park_status_color = (100, 255, 100) if self.park_open else (255, 100, 100)
+        speed_text = "PAUSED" if self.game_speed == 0 else f"x{int(self.game_speed)}"
+        speed_color = (255, 150, 0) if self.game_speed == 0 else (150, 255, 150)
+        time_text = f"Day {self.game_day}  {self.game_hour:02d}:{self.game_minute:02d}"
+
+        self.screen.blit(self.font.render(f"Park:", True, (200,200,200)), (12, y_offset))
+        self.screen.blit(self.font.render(park_status_text, True, park_status_color), (60, y_offset))
+        self.screen.blit(self.font.render(f"|  Time:", True, (200,200,200)), (140, y_offset))
+        self.screen.blit(self.font.render(time_text, True, (200,220,255)), (200, y_offset))
+        self.screen.blit(self.font.render(f"|  Speed:", True, (200,200,200)), (320, y_offset))
+        self.screen.blit(self.font.render(speed_text, True, speed_color), (390, y_offset))
+
         # Guest satisfaction line with color coding
+        y_offset += 20
         happiness_color = self._get_satisfaction_color(avg_happiness)
         satisfaction_color = self._get_satisfaction_color(avg_satisfaction)
         excitement_color = self._get_satisfaction_color(avg_excitement)
-
-        y_offset = 32
         self.screen.blit(self.font.render(f"Happiness:", True, (200,200,200)), (12, y_offset))
         self.screen.blit(self.font.render(f"{avg_happiness*100:.0f}%", True, happiness_color), (110, y_offset))
 
         self.screen.blit(self.font.render(f"Satisfaction:", True, (200,200,200)), (170, y_offset))
         self.screen.blit(self.font.render(f"{avg_satisfaction*100:.0f}%", True, satisfaction_color), (270, y_offset))
+
+        # Guest needs line
+        y_offset += 20
+        avg_hunger = sum(g.hunger for g in self.guests) / num_guests if num_guests > 0 else 1.0
+        avg_thirst = sum(g.thirst for g in self.guests) / num_guests if num_guests > 0 else 1.0
+        avg_bladder = sum(g.bladder for g in self.guests) / num_guests if num_guests > 0 else 0.0
+        hunger_color = (255, 100, 100) if avg_hunger < 0.3 else (255, 255, 100) if avg_hunger < 0.6 else (100, 255, 100)
+        thirst_color = (255, 100, 100) if avg_thirst < 0.3 else (255, 255, 100) if avg_thirst < 0.6 else (100, 255, 100)
+        bladder_color = (255, 100, 100) if avg_bladder > 0.7 else (255, 255, 100) if avg_bladder > 0.5 else (100, 255, 100)
+
+        # Count facilities
+        num_food_shops = len([s for s in self.shops if s.defn.shop_type == "food"])
+        num_drink_shops = len([s for s in self.shops if s.defn.shop_type == "drink"])
+        num_restrooms = len(self.restrooms)
+
+        self.screen.blit(self.font.render(f"Hunger:", True, (200,200,200)), (12, y_offset))
+        self.screen.blit(self.font.render(f"{avg_hunger*100:.0f}%", True, hunger_color), (75, y_offset))
+        self.screen.blit(self.font.render(f"Thirst:", True, (200,200,200)), (130, y_offset))
+        self.screen.blit(self.font.render(f"{avg_thirst*100:.0f}%", True, thirst_color), (185, y_offset))
+        self.screen.blit(self.font.render(f"Bladder:", True, (200,200,200)), (240, y_offset))
+        self.screen.blit(self.font.render(f"{avg_bladder*100:.0f}%", True, bladder_color), (310, y_offset))
+        self.screen.blit(self.font.render(f"|  Facilities: {num_food_shops}F {num_drink_shops}D {num_restrooms}R", True, (180,220,255)), (370, y_offset))
+
+        # Entrance fee and revenue line
+        y_offset += 20
+        entrance_fee_text = f"Entrance Fee: ${self.economy.park_entrance_fee}  |  Revenue: ${self.economy.entrance_revenue}  |  Refused: {self.economy.guests_refused}"
+        self.screen.blit(self.font.render(entrance_fee_text, True, (200,255,200)), (12, y_offset))
 
         # Employees line
         y_offset += 20
@@ -1236,6 +1989,10 @@ class Game:
         # Dessiner la toolbar et ses sous-menus au premier plan (en dernier)
         self.toolbar.draw(self.screen)
         self.debug_menu.draw(self.screen)
+
+        # Draw entrance fee panel (modal, on top of everything)
+        self._draw_entrance_fee_panel()
+
         pygame.display.flip()
 
     def _get_employee_at_position(self, x, y):

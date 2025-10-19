@@ -35,6 +35,7 @@
     {
       "id": "shop_soda",
       "name": "Soda Stand",
+      "shop_type": "drink",
       "build_cost": 400,
       "base_price": 2,
       "sprite": "shop_soda",
@@ -45,6 +46,7 @@
     {
       "id": "shop_icecream",
       "name": "Ice Cream",
+      "shop_type": "food",
       "build_cost": 500,
       "base_price": 3,
       "sprite": "shop_icecream",
@@ -55,6 +57,7 @@
     {
       "id": "shop_restaurant",
       "name": "Restaurant",
+      "shop_type": "food",
       "build_cost": 1200,
       "base_price": 8,
       "sprite": "shop_restaurant",
@@ -65,6 +68,7 @@
     {
       "id": "shop_gift",
       "name": "Gift Shop",
+      "shop_type": "souvenir",
       "build_cost": 800,
       "base_price": 5,
       "sprite": "shop_gift",
@@ -116,6 +120,44 @@
       "sprite": "bin"
     }
   ],
+  "restrooms": [
+    {
+      "id": "restroom_small",
+      "name": "Small Restroom",
+      "build_cost": 300,
+      "usage_fee": 0,
+      "capacity": 2,
+      "sprite": "restroom",
+      "size": [1, 1]
+    },
+    {
+      "id": "restroom_medium",
+      "name": "Medium Restroom",
+      "build_cost": 500,
+      "usage_fee": 0,
+      "capacity": 4,
+      "sprite": "restroom",
+      "size": [2, 1]
+    },
+    {
+      "id": "restroom_large",
+      "name": "Large Restroom",
+      "build_cost": 800,
+      "usage_fee": 0,
+      "capacity": 6,
+      "sprite": "restroom",
+      "size": [2, 2]
+    },
+    {
+      "id": "restroom_xlarge",
+      "name": "XL Restroom",
+      "build_cost": 1200,
+      "usage_fee": 0,
+      "capacity": 8,
+      "sprite": "restroom",
+      "size": [3, 2]
+    }
+  ],
   "projection_default": [
     64,
     36
@@ -138,5 +180,11 @@
       36
     ]
   ],
-  "tilt_default": 10.0
+  "tilt_default": 10.0,
+  "time_system": {
+    "day_duration_minutes": 12.0,
+    "starting_hour": 9,
+    "max_visitor_stay_days": 10,
+    "speeds": [0, 1, 2, 3]
+  }
 }
