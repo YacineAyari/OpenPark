@@ -2541,40 +2541,50 @@ class Game:
                 if emp_def:
                     if emp_def.type == 'engineer':
                         emp = Engineer(emp_def, emp_data['x'], emp_data['y'])
+                        if 'target_x' in emp_data:
+                            emp.target_x = emp_data.get('target_x')
+                            emp.target_y = emp_data.get('target_y')
                     elif emp_def.type == 'maintenance':
                         emp = MaintenanceWorker(emp_def, emp_data['x'], emp_data['y'])
                         if 'placement_type' in emp_data:
-                            emp.set_placement_type(emp_data['placement_type'])
+                            emp.placement_type = emp_data['placement_type']
+                        if 'target_x' in emp_data:
+                            emp.target_x = emp_data.get('target_x')
+                            emp.target_y = emp_data.get('target_y')
                     elif emp_def.type == 'security':
                         emp = SecurityGuard(emp_def, emp_data['x'], emp_data['y'])
                     elif emp_def.type == 'mascot':
                         emp = Mascot(emp_def, emp_data['x'], emp_data['y'])
                     else:
                         continue
-                    emp.state = emp_data['state']
+                    emp.state = emp_data.get('state', 'idle')
+                    if 'employee_id' in emp_data:
+                        emp.id = emp_data['employee_id']
                     self.employees.append(emp)
 
             # Restore guests
             for guest_data in game_state['guests']:
-                guest = Guest(guest_data['id'], guest_data['grid_x'], guest_data['grid_y'])
-                guest.x = guest_data['x']
-                guest.y = guest_data['y']
-                guest.state = guest_data['state']
-                guest.satisfaction = guest_data['satisfaction']
-                guest.money = guest_data['money']
-                guest.thrill_tolerance = guest_data['thrill_tolerance']
-                guest.nausea_tolerance = guest_data['nausea_tolerance']
-                guest.time_in_park = guest_data['time_in_park']
-                guest.max_time_in_park = guest_data['max_time_in_park']
-                guest.sprite_name = guest_data['sprite_name']
-                guest.hunger = guest_data['hunger']
-                guest.thirst = guest_data['thirst']
-                guest.bladder = guest_data['bladder']
-                guest.has_litter = guest_data['has_litter']
-                guest.litter_type = guest_data['litter_type']
-                guest.litter_hold_timer = guest_data['litter_hold_timer']
-                guest.litter_hold_duration = guest_data['litter_hold_duration']
-                guest.game = self  # Set reference to game
+                guest = Guest(guest_data['x'], guest_data['y'])
+                guest.id = guest_data.get('id', guest.id)
+                guest.grid_x = guest_data.get('grid_x', int(guest_data['x']))
+                guest.grid_y = guest_data.get('grid_y', int(guest_data['y']))
+                guest.state = guest_data.get('state', 'wandering')
+                guest.satisfaction = guest_data.get('satisfaction', 0.5)
+                guest.happiness = guest_data.get('happiness', 0.5)
+                guest.excitement = guest_data.get('excitement', 0.5)
+                guest.money = guest_data.get('money', 100)
+                guest.budget = guest_data.get('budget', guest.money)
+                guest.entry_time = guest_data.get('entry_time', 0.0)
+                guest.thrill_preference = guest_data.get('thrill_preference', 0.5)
+                guest.nausea_tolerance = guest_data.get('nausea_tolerance', 0.5)
+                guest.sprite = guest_data.get('sprite', guest.sprite)
+                guest.hunger = guest_data.get('hunger', 1.0)
+                guest.thirst = guest_data.get('thirst', 1.0)
+                guest.bladder = guest_data.get('bladder', 0.0)
+                guest.has_litter = guest_data.get('has_litter', False)
+                guest.litter_type = guest_data.get('litter_type', None)
+                guest.litter_hold_timer = guest_data.get('litter_hold_timer', 0.0)
+                guest.litter_hold_duration = guest_data.get('litter_hold_duration', 0.0)
                 self.guests.append(guest)
 
             # Restore restrooms
@@ -2582,8 +2592,9 @@ class Game:
                 rd = self.restroom_defs.get(restroom_data['id'])
                 if rd:
                     restroom = Restroom(rd, restroom_data['x'], restroom_data['y'])
-                    restroom.current_occupancy = restroom_data['current_occupancy']
-                    restroom.connected_to_path = restroom_data['connected_to_path']
+                    restroom.connected_to_path = restroom_data.get('connected_to_path', False)
+                    # Note: current_occupancy is saved but cannot be restored without guest references
+                    # Guests will re-enter restrooms through normal gameplay after load
                     self.restrooms.append(restroom)
 
             # Restore bins

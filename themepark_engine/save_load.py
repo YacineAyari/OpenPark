@@ -160,15 +160,17 @@ def serialize_employee(employee) -> Dict[str, Any]:
         'type': employee.defn.type,
         'x': employee.x,
         'y': employee.y,
-        'state': employee.state
+        'state': employee.state,
+        'employee_id': employee.id  # Internal ID for tracking
     }
 
-    # Add type-specific data
-    if hasattr(employee, 'target_x') and employee.target_x is not None:
-        data['target_x'] = employee.target_x
-        data['target_y'] = employee.target_y
+    # Add type-specific data for Engineers and MaintenanceWorkers
+    if hasattr(employee, 'target_x'):
+        data['target_x'] = employee.target_x if employee.target_x is not None else employee.x
+        data['target_y'] = employee.target_y if employee.target_y is not None else employee.y
 
-    if hasattr(employee, 'placement_type'):
+    # Add placement_type for MaintenanceWorkers
+    if hasattr(employee, 'placement_type') and employee.placement_type is not None:
         data['placement_type'] = employee.placement_type
 
     return data
@@ -184,12 +186,14 @@ def serialize_guest(guest) -> Dict[str, Any]:
         'grid_y': guest.grid_y,
         'state': guest.state,
         'satisfaction': guest.satisfaction,
+        'happiness': guest.happiness,
+        'excitement': guest.excitement,
         'money': guest.money,
-        'thrill_tolerance': guest.thrill_tolerance,
+        'budget': guest.budget,
+        'entry_time': guest.entry_time,
+        'thrill_preference': guest.thrill_preference,
         'nausea_tolerance': guest.nausea_tolerance,
-        'time_in_park': guest.time_in_park,
-        'max_time_in_park': guest.max_time_in_park,
-        'sprite_name': guest.sprite_name,
+        'sprite': guest.sprite,
         'hunger': guest.hunger,
         'thirst': guest.thirst,
         'bladder': guest.bladder,
@@ -228,6 +232,6 @@ def serialize_restroom(restroom) -> Dict[str, Any]:
         'id': restroom.defn.id,
         'x': restroom.x,
         'y': restroom.y,
-        'current_occupancy': restroom.current_occupancy,
+        'current_occupancy': len(restroom.current_users),  # Count of current users
         'connected_to_path': restroom.connected_to_path
     }
