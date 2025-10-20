@@ -2544,6 +2544,25 @@ class Game:
                         if 'target_x' in emp_data:
                             emp.target_x = emp_data.get('target_x')
                             emp.target_y = emp_data.get('target_y')
+                        if 'repair_timer' in emp_data:
+                            emp.repair_timer = emp_data.get('repair_timer', 0.0)
+                        # Restore target ride reference
+                        if 'target_ride_x' in emp_data and 'target_ride_y' in emp_data:
+                            target_x = emp_data['target_ride_x']
+                            target_y = emp_data['target_ride_y']
+                            # Find the ride at this position
+                            for ride in self.rides:
+                                if ride.x == target_x and ride.y == target_y:
+                                    emp.target_object = ride
+                                    # If engineer was moving to ride, recalculate path
+                                    if emp_data.get('state') == 'moving_to_ride':
+                                        from .pathfinding import astar_for_engineers
+                                        engineer_pos = (int(emp_data['x']), int(emp_data['y']))
+                                        ride_pos = (ride.x, ride.y)
+                                        path = astar_for_engineers(self.grid, engineer_pos, ride_pos)
+                                        if path:
+                                            emp.path = path[1:]  # Exclude starting position
+                                    break
                     elif emp_def.type == 'maintenance':
                         emp = MaintenanceWorker(emp_def, emp_data['x'], emp_data['y'])
                         if 'placement_type' in emp_data:
@@ -2558,6 +2577,9 @@ class Game:
                     else:
                         continue
                     emp.state = emp_data.get('state', 'idle')
+                    # Reset transitional states to idle
+                    if emp.state == 'moving_to_nearby':
+                        emp.state = 'idle'
                     if 'employee_id' in emp_data:
                         emp.id = emp_data['employee_id']
                     self.employees.append(emp)

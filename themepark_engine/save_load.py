@@ -164,10 +164,19 @@ def serialize_employee(employee) -> Dict[str, Any]:
         'employee_id': employee.id  # Internal ID for tracking
     }
 
-    # Add type-specific data for Engineers and MaintenanceWorkers
+    # Add type-specific data for Engineers
     if hasattr(employee, 'target_x'):
         data['target_x'] = employee.target_x if employee.target_x is not None else employee.x
         data['target_y'] = employee.target_y if employee.target_y is not None else employee.y
+
+    if hasattr(employee, 'repair_timer'):
+        data['repair_timer'] = employee.repair_timer
+
+    # Save target ride reference for Engineers
+    if hasattr(employee, 'target_object') and employee.target_object is not None:
+        # Save the ride's position as identifier
+        data['target_ride_x'] = employee.target_object.x
+        data['target_ride_y'] = employee.target_object.y
 
     # Add placement_type for MaintenanceWorkers
     if hasattr(employee, 'placement_type') and employee.placement_type is not None:
