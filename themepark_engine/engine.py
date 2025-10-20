@@ -49,7 +49,7 @@ class Game:
         # Guests will be spawned at park entrance
         import random
         self.guests = []
-        self.spr_guest = assets.load_image('guest'); self.spr_cache = {}
+        self.spr_cache = {}  # Sprite cache with zoom levels
         # Oblique tilt default at 10°
         self.renderer = IsoRenderer(self.screen, self.font, default_proj[0], default_proj[1], oblique_tilt=default_tilt)
         self.proj_index = max(0, self.proj_presets.index(default_proj) if default_proj in self.proj_presets else 0)
@@ -117,8 +117,28 @@ class Game:
         # No test objects - let the game start normally
 
     def sprite(self, name:str):
-        if name not in self.spr_cache: self.spr_cache[name] = assets.load_image(name)
-        return self.spr_cache[name]
+        # Create cache key with zoom level to scale sprites appropriately
+        zoom = self.renderer.camera.zoom
+        cache_key = (name, zoom)
+
+        if cache_key not in self.spr_cache:
+            # Load base sprite
+            base_sprite = assets.load_image(name)
+
+            # Scale sprite according to zoom
+            if zoom != 1.0:
+                # Calculate new size based on zoom
+                new_width = int(base_sprite.get_width() * zoom)
+                new_height = int(base_sprite.get_height() * zoom)
+                # Ensure minimum size of 1x1
+                new_width = max(1, new_width)
+                new_height = max(1, new_height)
+                scaled_sprite = pygame.transform.smoothscale(base_sprite, (new_width, new_height))
+                self.spr_cache[cache_key] = scaled_sprite
+            else:
+                self.spr_cache[cache_key] = base_sprite
+
+        return self.spr_cache[cache_key]
 
     def _can_place_ride(self, ride_def, gx, gy):
         """Check if a ride can be placed at the given position"""
@@ -379,8 +399,16 @@ class Game:
             if e.type==pygame.QUIT: return False, placing, hover
             if e.type==pygame.KEYDOWN:
                 if e.key==pygame.K_ESCAPE: return False, placing, hover
-                elif e.key in (pygame.K_EQUALS, pygame.K_PLUS): self.renderer.camera.set_zoom(self.renderer.camera.zoom+0.1); self.renderer._recalc(); self.renderer._rebuild_surfaces()
-                elif e.key==pygame.K_MINUS: self.renderer.camera.set_zoom(self.renderer.camera.zoom-0.1); self.renderer._recalc(); self.renderer._rebuild_surfaces()
+                elif e.key in (pygame.K_EQUALS, pygame.K_PLUS):
+                    self.renderer.camera.set_zoom(self.renderer.camera.zoom+0.1)
+                    self.renderer._recalc()
+                    self.renderer._rebuild_surfaces()
+                    self.spr_cache.clear()  # Clear sprite cache on zoom change
+                elif e.key==pygame.K_MINUS:
+                    self.renderer.camera.set_zoom(self.renderer.camera.zoom-0.1)
+                    self.renderer._recalc()
+                    self.renderer._rebuild_surfaces()
+                    self.spr_cache.clear()  # Clear sprite cache on zoom change
 
                 # Game speed controls
                 elif e.key==pygame.K_SPACE:
@@ -404,6 +432,32 @@ class Game:
                         self.park_just_closed = True  # Trigger evacuation
                     status = "OPEN" if self.park_open else "CLOSED"
                     DebugConfig.log('engine', f"Park is now {status}")
+
+            # Mouse wheel zoom control
+            if e.type == pygame.MOUSEWHEEL:
+                # Get mouse position
+                mouse_pos = pygame.mouse.get_pos()
+
+                # Convert mouse screen position to grid coordinates BEFORE zoom
+                old_grid_x, old_grid_y = self.renderer.screen_to_grid(mouse_pos[0], mouse_pos[1])
+
+                # e.y > 0 = scroll up (zoom in), e.y < 0 = scroll down (zoom out)
+                zoom_delta = e.y * 0.15  # 0.15 per wheel notch for smooth zooming
+                old_zoom = self.renderer.camera.zoom
+                new_zoom = old_zoom + zoom_delta
+                self.renderer.camera.set_zoom(new_zoom)
+                self.renderer._recalc()
+
+                # Convert the same grid point back to screen coordinates AFTER zoom
+                new_screen_x, new_screen_y = self.renderer.grid_to_screen(old_grid_x, old_grid_y)
+
+                # Adjust camera so the grid point under mouse stays in the same screen position
+                self.renderer.camera.x += (new_screen_x - mouse_pos[0])
+                self.renderer.camera.y += (new_screen_y - mouse_pos[1])
+
+                self.renderer._rebuild_surfaces()
+                self.spr_cache.clear()  # Clear sprite cache on zoom change
+
             if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
                 action = self.debug_menu.handle_mouse(e)
                 if action:
@@ -1635,14 +1689,15 @@ class Game:
         self.renderer.draw_direction_legend()
         
         objs=[]
-        for r in self.rides: 
-            objs.append((self.sprite(r.defn.sprite),(r.x,r.y)))
+        for r in self.rides:
+            # Centrer le sprite du ride sur son empreinte (comme pour les shops)
+            width, height = r.defn.size
+            center_x = r.x + width / 2 - 0.5
+            center_y = r.y + height / 2 - 0.5
+            objs.append((self.sprite(r.defn.sprite),(center_x,center_y)))
             # Indicateur visuel si l'attraction est en panne
             if r.is_broken:
                 # Dessiner un indicateur rouge pour montrer que l'attraction est en panne
-                width, height = r.defn.size
-                center_x = r.x + width / 2 - 0.5
-                center_y = r.y + height / 2 - 0.5
                 indicator_x = center_x + width / 2 - 0.5
                 indicator_y = center_y - height / 2 + 0.5
                 # Utiliser un sprite rouge pour l'indicateur de panne
@@ -1691,7 +1746,7 @@ class Game:
 
         # Render guests with satisfaction indicators
         for g in self.guests:
-            objs.append((self.spr_guest,(g.x,g.y)))  # Utiliser les positions flottantes pour le rendu
+            objs.append((self.sprite(g.sprite),(g.x,g.y)))  # Utiliser les positions flottantes pour le rendu avec sprite diversifié
 
             # Add satisfaction indicator above guest
             satisfaction_color = self._get_satisfaction_color(g.satisfaction)
@@ -1802,7 +1857,7 @@ class Game:
         # Render litter and bins
         # Render bins first (so they appear behind visitors)
         for bin_obj in self.litter_manager.bins:
-            bin_sprite = self.sprite('bin')
+            bin_sprite = self.sprite(bin_obj.defn.sprite)
             objs.append((bin_sprite,(bin_obj.x, bin_obj.y)))
         
         # Render litter (smaller, visible sprites with random positions and colors)

@@ -168,17 +168,52 @@
     - Bins : Vert (100, 200, 100)
     - Identification visuelle claire de tous les bâtiments
 
+27. ✅ **Système de sprites OpenMoji**
+    - Statut : Complété
+    - Difficulté : 3/5
+    - Intégration d'emojis OpenMoji haute qualité (72x72px)
+    - 21 emojis téléchargés (attractions, shops, employés, visiteurs, infrastructure)
+    - Système de chargement automatique avec fallback
+    - Attribution CC BY-SA 4.0
+    - Documentation complète dans assets/openmoji/README.md
+
+28. ✅ **Zoom avec molette de souris**
+    - Statut : Complété
+    - Difficulté : 3/5
+    - Zoom centré sur position du curseur
+    - Limites min/max (0.5x - 3.0x)
+    - Ajustement automatique de la caméra pour maintenir le point sous le curseur
+    - Compatible avec les raccourcis clavier +/-
+
+29. ✅ **Sprites adaptatifs au zoom**
+    - Statut : Complété
+    - Difficulté : 3/5
+    - Tous les sprites (emojis) s'adaptent au niveau de zoom
+    - Cache intelligent avec clé (sprite, zoom)
+    - Scaling de qualité avec smoothscale
+    - Nettoyage automatique du cache à chaque changement de zoom
+
+30. ✅ **Visiteurs diversifiés**
+    - Statut : Complété
+    - Difficulté : 2/5
+    - 18 emojis de visiteurs avec diversité
+    - 6 personnes neutres avec tons de peau variés
+    - 6 hommes avec tons de peau variés
+    - 6 femmes avec tons de peau variés
+    - Attribution aléatoire à chaque visiteur
+    - Rendu visuel réaliste et inclusif
+
 ## Tâches en attente 📋
 
 ### Haute priorité
 
-27. **Compléter les systèmes d'employés restants**
+31. **Compléter les systèmes d'employés restants**
     - Difficulté : 3/5
     - Gardien de parc : sécurité et prévention des vols (déjà implémenté)
     - Mascotte : augmentation de l'excitation des visiteurs (déjà implémenté)
     - Note : Les 4 types d'employés sont maintenant opérationnels
 
-28. **Ajouter plus d'attractions dans objects.json**
+32. **Ajouter plus d'attractions dans objects.json**
     - Difficulté : 2/5
     - Roller coaster
     - Ferris wheel
@@ -186,7 +221,7 @@
     - Haunted house
     - Water rides
 
-29. **Améliorer le système économique**
+33. **Améliorer le système économique**
     - Difficulté : 3/5
     - Budget de départ plus réaliste
     - Équilibrage des coûts et revenus
@@ -195,19 +230,19 @@
 
 ### Priorité moyenne
 
-30. **Améliorer la toolbar**
+34. **Améliorer la toolbar**
     - Difficulté : 3/5
     - Interface plus moderne et intuitive
     - Icônes plus claires
     - Meilleure organisation des catégories
 
-31. **Système de sauvegarde/chargement**
+35. **Système de sauvegarde/chargement**
     - Difficulté : 3/5
     - Sauvegarde complète du parc (attractions, chemins, shops, employés, visiteurs)
     - Chargement des parcs sauvegardés
     - Gestion de plusieurs sauvegardes
 
-32. **Ajouter des animations pour les attractions**
+36. **Ajouter des animations pour les attractions**
     - Difficulté : 3/5
     - Animations des attractions en fonctionnement
     - Effets visuels (rotation, mouvement)
@@ -215,37 +250,37 @@
 
 ### Priorité basse
 
-33. **Optimiser le pathfinding**
+37. **Optimiser le pathfinding**
     - Difficulté : 4/5
     - Amélioration de l'algorithme A*
     - Gestion des obstacles dynamiques
     - Cache des chemins fréquents
 
-34. **Améliorer l'IA des visiteurs**
+38. **Améliorer l'IA des visiteurs**
     - Difficulté : 5/5
     - Système de groupes (familles, amis)
     - Comportements plus réalistes avancés
     - Note : Système de besoins (faim/soif/toilettes) déjà implémenté ✅
 
-35. **Système météo**
+39. **Système météo**
     - Difficulté : 4/5
     - Conditions météorologiques (soleil, pluie, vent)
     - Impact sur les visiteurs (moins de visiteurs sous la pluie)
     - Impact sur les attractions (certaines ferment sous la pluie)
 
-36. **Système de recherche**
+40. **Système de recherche**
     - Difficulté : 5/5
     - Arbre de recherche technologique
     - Déblocage progressif des attractions
     - Coûts de recherche
 
-37. **Mode campagne**
+41. **Mode campagne**
     - Difficulté : 5/5
     - Scénarios prédéfinis avec objectifs
     - Progression et récompenses
     - Niveaux de difficulté
 
-38. **Mode multijoueur**
+42. **Mode multijoueur**
     - Difficulté : 5/5
     - Architecture réseau
     - Synchronisation du state
@@ -280,6 +315,10 @@
 - ✅ Coloration visuelle des tuiles (rides/shops/restrooms/bins)
 - ✅ Pathfinding de base
 - ✅ Économie de base (cash, coûts, revenus, salaires)
+- ✅ Système de sprites OpenMoji (emojis haute qualité)
+- ✅ Zoom avec molette de souris (centré sur curseur)
+- ✅ Sprites adaptatifs au zoom (scaling automatique)
+- ✅ Visiteurs diversifiés (18 emojis avec tons de peau variés)
 
 ### Problèmes connus
 - Aucun (système stable)

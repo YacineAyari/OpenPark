@@ -4,7 +4,7 @@
 
 OpenPark est une simulation de parc d'attractions en **projection oblique**, développée en Python avec Pygame. Gérez votre parc, construisez des attractions, employez du personnel, et gardez vos visiteurs heureux!
 
-![Version](https://img.shields.io/badge/version-0.3.1--alpha-orange)
+![Version](https://img.shields.io/badge/version-0.3.2--alpha-orange)
 ![Python](https://img.shields.io/badge/python-3.8+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![AI-Powered](https://img.shields.io/badge/AI--Powered-Claude%20%26%20GPT-purple)
@@ -32,6 +32,8 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 - ✅ **Gestion du litter** (state machine visiteurs, assignation automatique d'employés)
 - ✅ **Projection oblique configurable** (math oblique, picking inverse, debug controls)
 - ✅ **UI temps réel** (stats colorées, indicateurs visuels, feedback instantané, coloration tuiles)
+- ✅ **Système de sprites OpenMoji** (emojis haute qualité, 21 sprites, diversité visuelle)
+- ✅ **Zoom avec molette** (centré sur curseur, limites intelligentes, sprites adaptatifs)
 
 **Résultat**: Un moteur de jeu complet et fonctionnel développé entièrement via conversation avec IA! 🚀
 
@@ -205,6 +207,7 @@ python run.py
 ### Caméra
 - **WASD / Flèches** - Déplacer la caméra
 - **Middle-click + Drag** - Pan
+- **Molette souris** - Zoom in/out (centré sur curseur)
 - **+/-** - Zoom in/out
 
 ### Construction

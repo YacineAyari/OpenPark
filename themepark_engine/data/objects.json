@@ -10,7 +10,7 @@
       "nausea": 0.2,
       "maint_cost": 50,
         "breakdown_chance": 0.01,
-      "sprite": "ride_carousel",
+      "sprite": "rides/1F3A0.png",
       "size": [5, 5],
       "entrance_cost": 200,
       "exit_cost": 200
@@ -25,7 +25,7 @@
       "nausea": 0.3,
       "maint_cost": 70,
         "breakdown_chance": 0.01,
-      "sprite": "ride_bumper",
+      "sprite": "rides/1F3A2.png",
       "size": [4, 4],
       "entrance_cost": 150,
       "exit_cost": 150
@@ -38,7 +38,7 @@
       "shop_type": "drink",
       "build_cost": 400,
       "base_price": 2,
-      "sprite": "shop_soda",
+      "sprite": "shops/1F964.png",
       "size": [2, 2],
       "entrance_cost": 0,
       "litter_type": "soda"
@@ -49,7 +49,7 @@
       "shop_type": "food",
       "build_cost": 500,
       "base_price": 3,
-      "sprite": "shop_icecream",
+      "sprite": "shops/1F366.png",
       "size": [3, 3],
       "entrance_cost": 0,
       "litter_type": "trash"
@@ -60,7 +60,7 @@
       "shop_type": "food",
       "build_cost": 1200,
       "base_price": 8,
-      "sprite": "shop_restaurant",
+      "sprite": "shops/1F354.png",
       "size": [3, 5],
       "entrance_cost": 0,
       "litter_type": "trash"
@@ -71,7 +71,7 @@
       "shop_type": "souvenir",
       "build_cost": 800,
       "base_price": 5,
-      "sprite": "shop_gift",
+      "sprite": "shops/1F381.png",
       "size": [5, 5],
       "entrance_cost": 0,
       "litter_type": "trash"
@@ -83,7 +83,7 @@
       "name": "Ingénieur",
       "type": "engineer",
       "salary": 50,
-      "sprite": "employee_engineer",
+      "sprite": "employees/1F477.png",
       "efficiency": 1.0
     },
     {
@@ -91,7 +91,7 @@
       "name": "Agent de Maintenance",
       "type": "maintenance",
       "salary": 30,
-      "sprite": "employee_maintenance",
+      "sprite": "employees/1F9F9.png",
       "efficiency": 1.0
     },
     {
@@ -99,7 +99,7 @@
       "name": "Gardien de Parc",
       "type": "security",
       "salary": 40,
-      "sprite": "employee_security",
+      "sprite": "employees/1F482.png",
       "efficiency": 1.0
     },
     {
@@ -107,7 +107,7 @@
       "name": "Mascotte",
       "type": "mascot",
       "salary": 60,
-      "sprite": "employee_mascot",
+      "sprite": "employees/1F9F8.png",
       "efficiency": 1.0
     }
   ],
@@ -117,7 +117,7 @@
       "name": "Trash Bin",
       "cost": 50,
       "capacity": 999,
-      "sprite": "bin"
+      "sprite": "infrastructure/1F5D1.png"
     }
   ],
   "restrooms": [
@@ -127,7 +127,7 @@
       "build_cost": 300,
       "usage_fee": 0,
       "capacity": 2,
-      "sprite": "restroom",
+      "sprite": "infrastructure/1F6BB.png",
       "size": [1, 1]
     },
     {
@@ -136,7 +136,7 @@
       "build_cost": 500,
       "usage_fee": 0,
       "capacity": 4,
-      "sprite": "restroom",
+      "sprite": "infrastructure/1F6BB.png",
       "size": [2, 1]
     },
     {
@@ -145,7 +145,7 @@
       "build_cost": 800,
       "usage_fee": 0,
       "capacity": 6,
-      "sprite": "restroom",
+      "sprite": "infrastructure/1F6BB.png",
       "size": [2, 2]
     },
     {
@@ -154,7 +154,7 @@
       "build_cost": 1200,
       "usage_fee": 0,
       "capacity": 8,
-      "sprite": "restroom",
+      "sprite": "infrastructure/1F6BB.png",
       "size": [3, 2]
     }
   ],

@@ -4,6 +4,8 @@ import pygame
 BASE = Path(__file__).resolve().parent
 PLACEHOLDERS = BASE / 'assets' / 'placeholders'
 ORIGINAL = BASE / 'assets' / 'original'
+# OpenMoji is at the project root, not in themepark_engine/assets/
+OPENMOJI = BASE.parent / 'assets' / 'openmoji'
 _cache = {}
 COLORS = {
     'tile_grass': (60,160,60),
@@ -32,8 +34,19 @@ COLORS = {
 def _try_load(path: Path):
     try:
         surf = pygame.image.load(path.as_posix())
-        return surf.convert_alpha() if surf.get_masks()[3] else surf.convert()
-    except Exception:
+        # Try to convert for better performance, but return raw surface if conversion fails
+        try:
+            # Check if image has alpha channel
+            if surf.get_flags() & pygame.SRCALPHA or surf.get_alpha() is not None:
+                return surf.convert_alpha()
+            else:
+                return surf.convert()
+        except pygame.error:
+            # If convert fails (pygame.display not initialized), return raw surface
+            return surf
+    except Exception as e:
+        # Debug: uncomment to see loading errors
+        # print(f"Failed to load {path}: {e}")
         return None
 
 def _fallback_surface(key: str, size=(32, 32)):
@@ -49,10 +62,12 @@ def load_image(name: str) -> pygame.Surface:
     p = Path(name)
     candidates = []
     if p.suffix:
-        candidates += [ORIGINAL / name, PLACEHOLDERS / name]
+        # If full path with extension, check openmoji first, then original, then placeholders
+        candidates += [OPENMOJI / name, ORIGINAL / name, PLACEHOLDERS / name]
     else:
+        # Without extension, try .png and .bmp in all directories
         for ext in ('.png', '.bmp'):
-            candidates += [ORIGINAL / f"{name}{ext}", PLACEHOLDERS / f"{name}{ext}"]
+            candidates += [OPENMOJI / f"{name}{ext}", ORIGINAL / f"{name}{ext}", PLACEHOLDERS / f"{name}{ext}"]
     for c in candidates:
         if c.exists():
             surf = _try_load(c)

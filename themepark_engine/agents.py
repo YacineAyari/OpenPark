@@ -26,6 +26,31 @@ class GuestState:
     USING_RESTROOM = "using_restroom"
 
 class Guest:
+    # List of diverse guest emojis (person, man, woman with various skin tones)
+    GUEST_SPRITES = [
+        # Person (neutral)
+        'guests/1F9D1.png',
+        'guests/1F9D1-1F3FB.png',  # Light skin
+        'guests/1F9D1-1F3FC.png',  # Medium-light skin
+        'guests/1F9D1-1F3FD.png',  # Medium skin
+        'guests/1F9D1-1F3FE.png',  # Medium-dark skin
+        'guests/1F9D1-1F3FF.png',  # Dark skin
+        # Man
+        'guests/1F468.png',
+        'guests/1F468-1F3FB.png',
+        'guests/1F468-1F3FC.png',
+        'guests/1F468-1F3FD.png',
+        'guests/1F468-1F3FE.png',
+        'guests/1F468-1F3FF.png',
+        # Woman
+        'guests/1F469.png',
+        'guests/1F469-1F3FB.png',
+        'guests/1F469-1F3FC.png',
+        'guests/1F469-1F3FD.png',
+        'guests/1F469-1F3FE.png',
+        'guests/1F469-1F3FF.png',
+    ]
+
     def __init__(self, x: float, y: float):
         # Position réelle (float pour mouvement fluide)
         self.x = float(x)
@@ -33,6 +58,9 @@ class Guest:
         # Position de grille (int pour logique de jeu)
         self.grid_x = int(x)
         self.grid_y = int(y)
+
+        # Randomly assign a diverse sprite to this guest
+        self.sprite = random.choice(Guest.GUEST_SPRITES)
         
         self.path: List[Tuple[int, int]] = []
         self.state = GuestState.WANDERING
