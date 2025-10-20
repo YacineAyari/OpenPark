@@ -16,7 +16,10 @@ from .ui_parts.debug_menu import DebugMenu
 from .queues import SimpleQueueManager
 from .serpent_queue import SerpentQueueManager, Direction, Movement, MovementType
 from .debug import DebugConfig
-from .litter import LitterManager, BinDef, DEFAULT_BIN
+from .litter import LitterManager, BinDef, DEFAULT_BIN, Litter
+from .save_load import (SaveLoadManager, serialize_grid, serialize_ride, serialize_shop,
+                         serialize_employee, serialize_guest, serialize_bin, serialize_litter,
+                         serialize_restroom)
 
 DATA = Path(__file__).resolve().parent / 'data'
 
@@ -29,6 +32,7 @@ class Game:
         self.grid = MapGrid(64, 64); self.economy = Economy()
         self.queue_manager = SimpleQueueManager()
         self.litter_manager = LitterManager(self.grid)  # Add litter management system with grid reference
+        self.save_load_manager = SaveLoadManager()  # Save/Load system
         data = json.load(open(DATA/'objects.json','r'))
         self.ride_defs = {r['id']: RideDef(**r) for r in data.get('rides', [])}
         self.shop_defs = {s['id']: ShopDef(**s) for s in data.get('shops', [])}
@@ -430,6 +434,18 @@ class Game:
                         self.park_just_closed = True  # Trigger evacuation
                     status = "OPEN" if self.park_open else "CLOSED"
                     DebugConfig.log('engine', f"Park is now {status}")
+
+                # Save/Load controls
+                elif e.key==pygame.K_F5:
+                    # Quick save
+                    save_path = self.save_game("quicksave")
+                    print(f"✓ Quick saved to: {save_path}")
+                elif e.key==pygame.K_F9:
+                    # Quick load
+                    if self.load_game("quicksave"):
+                        print("✓ Quick load successful!")
+                    else:
+                        print("✗ Quick load failed - no save found")
 
             # Mouse wheel zoom control
             if e.type == pygame.MOUSEWHEEL:
@@ -1977,7 +1993,7 @@ class Game:
         total_queues = len(queue_paths)
 
         # Draw stats panel (top-left corner)
-        stats_bg = pygame.Surface((550, 210), pygame.SRCALPHA)
+        stats_bg = pygame.Surface((550, 230), pygame.SRCALPHA)
         stats_bg.fill((20, 20, 20, 200))  # Semi-transparent dark background
         self.screen.blit(stats_bg, (8, 8))
 
@@ -2053,7 +2069,12 @@ class Game:
         y_offset += 20
         tech_info = f"Zoom: {self.renderer.camera.zoom:.2f}  Tile: {int(self.renderer.base_tile_w)}x{int(self.renderer.base_tile_h)}  φ: {self.debug_menu.oblique_tilt:.1f}°"
         self.screen.blit(self.font.render(tech_info, True, (150,150,150)), (12, y_offset))
-        
+
+        # Save/Load controls line
+        y_offset += 20
+        save_controls = "F5: Quick Save  |  F9: Quick Load"
+        self.screen.blit(self.font.render(save_controls, True, (200,200,255)), (12, y_offset))
+
         # Dessiner la toolbar et ses sous-menus au premier plan (en dernier)
         self.toolbar.draw(self.screen)
         self.debug_menu.draw(self.screen)
@@ -2394,6 +2415,230 @@ class Game:
                 guest.litter_hold_duration = 0.0
                 guest.apply_litter_drop_penalty()  # Apply satisfaction penalty
                 DebugConfig.log('guests', f"Guest {guest.id} dropped litter (no bin found)")
+
+    def save_game(self, save_name: str = None) -> str:
+        """
+        Save the current game state
+
+        Args:
+            save_name: Optional custom save name
+
+        Returns:
+            Path to the saved file
+        """
+        game_state = {
+            # Grid state
+            'grid': serialize_grid(self.grid),
+
+            # Game entities
+            'rides': [serialize_ride(ride) for ride in self.rides],
+            'shops': [serialize_shop(shop) for shop in self.shops],
+            'employees': [serialize_employee(emp) for emp in self.employees],
+            'guests': [serialize_guest(guest) for guest in self.guests],
+            'restrooms': [serialize_restroom(restroom) for restroom in self.restrooms],
+
+            # Litter system
+            'bins': [serialize_bin(bin_obj) for bin_obj in self.litter_manager.bins],
+            'litter': [serialize_litter(litter) for litter in self.litter_manager.litters],
+
+            # Economy
+            'economy': {
+                'cash': self.economy.cash,
+                'park_entrance_fee': self.economy.park_entrance_fee,
+                'entrance_revenue': self.economy.entrance_revenue,
+                'guests_refused': self.economy.guests_refused
+            },
+
+            # Time system
+            'time': {
+                'game_time': self.game_time,
+                'game_day': self.game_day,
+                'game_hour': self.game_hour,
+                'game_minute': self.game_minute,
+                'game_speed': self.game_speed,
+                'park_open': self.park_open
+            },
+
+            # Park settings
+            'park_settings': {
+                'entrance_position': self.park_entrance,
+                'entrance_width': self.entrance_width
+            },
+
+            # Statistics
+            'statistics': {
+                'guests_entered': self.guests_entered,
+                'guests_left': self.guests_left
+            }
+        }
+
+        save_path = self.save_load_manager.save_game(game_state, save_name)
+        print(f"Game saved to: {save_path}")
+        return save_path
+
+    def load_game(self, save_name: str) -> bool:
+        """
+        Load a saved game state
+
+        Args:
+            save_name: Name of the save file to load
+
+        Returns:
+            True if loaded successfully, False otherwise
+        """
+        try:
+            game_state = self.save_load_manager.load_game(save_name)
+
+            # Clear current state
+            self.rides.clear()
+            self.shops.clear()
+            self.employees.clear()
+            self.guests.clear()
+            self.restrooms.clear()
+            self.litter_manager.bins.clear()
+            self.litter_manager.litters.clear()
+
+            # Restore grid
+            grid_data = game_state['grid']
+            for x in range(grid_data['width']):
+                for y in range(grid_data['height']):
+                    self.grid.set(x, y, grid_data['tiles'][x][y])
+
+            # Restore rides
+            for ride_data in game_state['rides']:
+                rd = self.ride_defs.get(ride_data['id'])
+                if rd:
+                    ride = Ride(rd, ride_data['x'], ride_data['y'])
+                    ride.operational = ride_data.get('operational', True)
+                    ride.ride_timer = ride_data.get('ride_timer', 0.0)
+                    ride.ride_duration = ride_data.get('ride_duration', 3.0)
+                    ride.is_launched = ride_data.get('is_launched', False)
+                    ride.waiting_timer = ride_data.get('waiting_timer', 0.0)
+                    ride.max_wait_time = ride_data.get('max_wait_time', 5.0)
+                    ride.is_broken = ride_data.get('is_broken', False)
+                    ride.being_repaired = ride_data.get('being_repaired', False)
+                    ride.breakdown_timer = ride_data.get('breakdown_timer', 0.0)
+                    # Note: current_visitors and waiting_visitors will be restored after guests are loaded
+                    if ride_data['entrance']:
+                        ride.entrance = RideEntrance(ride_data['entrance']['x'], ride_data['entrance']['y'])
+                    if ride_data['exit']:
+                        ride.exit = RideExit(ride_data['exit']['x'], ride_data['exit']['y'])
+                    self.rides.append(ride)
+
+            # Restore shops
+            for shop_data in game_state['shops']:
+                sd = self.shop_defs.get(shop_data['id'])
+                if sd:
+                    shop = Shop(sd, shop_data['x'], shop_data['y'])
+                    if shop_data['entrance']:
+                        shop.entrance = ShopEntrance(shop_data['id'], shop_data['entrance']['x'], shop_data['entrance']['y'], 'S')
+                    shop.connected_to_path = shop_data['connected_to_path']
+                    self.shops.append(shop)
+
+            # Restore employees
+            for emp_data in game_state['employees']:
+                emp_def = self.employee_defs.get(emp_data['id'])
+                if emp_def:
+                    if emp_def.type == 'engineer':
+                        emp = Engineer(emp_def, emp_data['x'], emp_data['y'])
+                    elif emp_def.type == 'maintenance':
+                        emp = MaintenanceWorker(emp_def, emp_data['x'], emp_data['y'])
+                        if 'placement_type' in emp_data:
+                            emp.set_placement_type(emp_data['placement_type'])
+                    elif emp_def.type == 'security':
+                        emp = SecurityGuard(emp_def, emp_data['x'], emp_data['y'])
+                    elif emp_def.type == 'mascot':
+                        emp = Mascot(emp_def, emp_data['x'], emp_data['y'])
+                    else:
+                        continue
+                    emp.state = emp_data['state']
+                    self.employees.append(emp)
+
+            # Restore guests
+            for guest_data in game_state['guests']:
+                guest = Guest(guest_data['id'], guest_data['grid_x'], guest_data['grid_y'])
+                guest.x = guest_data['x']
+                guest.y = guest_data['y']
+                guest.state = guest_data['state']
+                guest.satisfaction = guest_data['satisfaction']
+                guest.money = guest_data['money']
+                guest.thrill_tolerance = guest_data['thrill_tolerance']
+                guest.nausea_tolerance = guest_data['nausea_tolerance']
+                guest.time_in_park = guest_data['time_in_park']
+                guest.max_time_in_park = guest_data['max_time_in_park']
+                guest.sprite_name = guest_data['sprite_name']
+                guest.hunger = guest_data['hunger']
+                guest.thirst = guest_data['thirst']
+                guest.bladder = guest_data['bladder']
+                guest.has_litter = guest_data['has_litter']
+                guest.litter_type = guest_data['litter_type']
+                guest.litter_hold_timer = guest_data['litter_hold_timer']
+                guest.litter_hold_duration = guest_data['litter_hold_duration']
+                guest.game = self  # Set reference to game
+                self.guests.append(guest)
+
+            # Restore restrooms
+            for restroom_data in game_state['restrooms']:
+                rd = self.restroom_defs.get(restroom_data['id'])
+                if rd:
+                    restroom = Restroom(rd, restroom_data['x'], restroom_data['y'])
+                    restroom.current_occupancy = restroom_data['current_occupancy']
+                    restroom.connected_to_path = restroom_data['connected_to_path']
+                    self.restrooms.append(restroom)
+
+            # Restore bins
+            for bin_data in game_state['bins']:
+                bin_def = self.bin_defs.get(bin_data['id'])
+                if bin_def:
+                    bin_obj = self.litter_manager.add_bin(bin_def, bin_data['x'], bin_data['y'])
+                    if bin_obj:
+                        bin_obj.current_capacity = bin_data['current_capacity']
+
+            # Restore litter
+            for litter_data in game_state['litter']:
+                litter = Litter(litter_data['x'], litter_data['y'], litter_data['type'])
+                litter.age = litter_data['age']
+                litter.offset_x = litter_data['offset_x']
+                litter.offset_y = litter_data['offset_y']
+                self.litter_manager.litters.append(litter)
+
+            # Restore economy
+            economy_data = game_state['economy']
+            self.economy.cash = economy_data.get('cash', 10000)
+            self.economy.park_entrance_fee = economy_data.get('park_entrance_fee', 50)
+            self.economy.entrance_revenue = economy_data.get('entrance_revenue', 0)
+            self.economy.guests_refused = economy_data.get('guests_refused', 0)
+
+            # Restore time
+            time_data = game_state['time']
+            self.game_time = time_data['game_time']
+            self.game_day = time_data['game_day']
+            self.game_hour = time_data['game_hour']
+            self.game_minute = time_data['game_minute']
+            self.game_speed = time_data['game_speed']
+            self.park_open = time_data['park_open']
+
+            # Restore park settings
+            park_data = game_state['park_settings']
+            self.park_entrance = tuple(park_data['entrance_position']) if park_data['entrance_position'] else None
+            self.entrance_width = park_data.get('entrance_width', 5)
+
+            # Restore statistics
+            stats_data = game_state['statistics']
+            self.guests_entered = stats_data.get('guests_entered', 0)
+            self.guests_left = stats_data.get('guests_left', 0)
+
+            # Update queue system
+            self._update_queue_system()
+
+            print(f"Game loaded successfully from: {save_name}")
+            return True
+
+        except Exception as e:
+            print(f"Error loading game: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
     def run(self):
         running=True
