@@ -1689,6 +1689,156 @@ class Game:
         self.screen.blit(close_text, close_text_rect)
         self.entrance_fee_close_button_rect = close_button_rect
 
+    def _draw_top_hud_bar(self, num_guests, avg_happiness, avg_satisfaction, avg_excitement,
+                          avg_hunger, avg_thirst, avg_bladder,
+                          num_food_shops, num_drink_shops, num_restrooms,
+                          num_engineers, num_maintenance, num_security, num_mascots,
+                          num_litter, num_bins, connected_queues, total_queues):
+        """Draw compact horizontal HUD bar at top of screen with emojis"""
+
+        # Background bar
+        hud_height = 50
+        hud_bg = pygame.Surface((self.screen.get_width(), hud_height), pygame.SRCALPHA)
+        hud_bg.fill((20, 20, 20, 220))  # Semi-transparent dark background
+        self.screen.blit(hud_bg, (0, 0))
+
+        # Colors for status indicators
+        park_status_color = (100, 255, 100) if self.park_open else (255, 100, 100)
+        speed_color = (255, 150, 0) if self.game_speed == 0 else (150, 255, 150)
+        hunger_color = (255, 100, 100) if avg_hunger < 0.3 else (255, 255, 100) if avg_hunger < 0.6 else (100, 255, 100)
+        thirst_color = (255, 100, 100) if avg_thirst < 0.3 else (255, 255, 100) if avg_thirst < 0.6 else (100, 255, 100)
+        bladder_color = (255, 100, 100) if avg_bladder > 0.7 else (255, 255, 100) if avg_bladder > 0.5 else (100, 255, 100)
+        litter_color = (255, 100, 100) if num_litter > 10 else (150, 255, 150) if num_litter < 5 else (255, 255, 150)
+
+        # Line 1: Main info (money, guests, rides, shops, time)
+        x_offset = 10
+        y = 8
+
+        # Money
+        money_text = f"💰 ${self.economy.cash}"
+        self.screen.blit(self.font.render(money_text, True, (255, 220, 100)), (x_offset, y))
+        x_offset += 120
+
+        # Guests
+        guests_text = f"🧑 {num_guests}"
+        self.screen.blit(self.font.render(guests_text, True, (200, 220, 255)), (x_offset, y))
+        x_offset += 70
+
+        # Rides
+        rides_text = f"🎢 {len(self.rides)}"
+        self.screen.blit(self.font.render(rides_text, True, (255, 180, 255)), (x_offset, y))
+        x_offset += 60
+
+        # Shops
+        shops_text = f"🏪 {len(self.shops)}"
+        self.screen.blit(self.font.render(shops_text, True, (200, 255, 200)), (x_offset, y))
+        x_offset += 70
+
+        # Separator
+        self.screen.blit(self.font.render("|", True, (100, 100, 100)), (x_offset, y))
+        x_offset += 15
+
+        # Time
+        time_text = f"📅 D{self.game_day} {self.game_hour:02d}:{self.game_minute:02d}"
+        self.screen.blit(self.font.render(time_text, True, (200, 220, 255)), (x_offset, y))
+        x_offset += 120
+
+        # Park status
+        park_emoji = "🟢" if self.park_open else "🔴"
+        self.screen.blit(self.font.render(park_emoji, True, park_status_color), (x_offset, y))
+        x_offset += 25
+
+        # Speed
+        speed_text = "⏸" if self.game_speed == 0 else f"⏩x{int(self.game_speed)}"
+        self.screen.blit(self.font.render(speed_text, True, speed_color), (x_offset, y))
+        x_offset += 60
+
+        # Separator
+        self.screen.blit(self.font.render("|", True, (100, 100, 100)), (x_offset, y))
+        x_offset += 15
+
+        # Guest needs
+        hunger_text = f"🍔{avg_hunger*100:.0f}%"
+        self.screen.blit(self.font.render(hunger_text, True, hunger_color), (x_offset, y))
+        x_offset += 80
+
+        thirst_text = f"🥤{avg_thirst*100:.0f}%"
+        self.screen.blit(self.font.render(thirst_text, True, thirst_color), (x_offset, y))
+        x_offset += 80
+
+        bladder_text = f"🚻{avg_bladder*100:.0f}%"
+        self.screen.blit(self.font.render(bladder_text, True, bladder_color), (x_offset, y))
+        x_offset += 80
+
+        # Separator
+        self.screen.blit(self.font.render("|", True, (100, 100, 100)), (x_offset, y))
+        x_offset += 15
+
+        # Employees
+        employees_text = f"👷{num_engineers} 🧹{num_maintenance} 💂{num_security} 🧸{num_mascots}"
+        self.screen.blit(self.font.render(employees_text, True, (180, 220, 255)), (x_offset, y))
+        x_offset += 150
+
+        # Separator
+        self.screen.blit(self.font.render("|", True, (100, 100, 100)), (x_offset, y))
+        x_offset += 15
+
+        # Litter and bins
+        litter_text = f"🗑{num_litter}/{num_bins}"
+        self.screen.blit(self.font.render(litter_text, True, litter_color), (x_offset, y))
+        x_offset += 80
+
+        # Line 2: Secondary info (happiness, entrance fee, controls)
+        y = 28
+        x_offset = 10
+
+        # Happiness
+        happiness_color = self._get_satisfaction_color(avg_happiness)
+        happiness_text = f"😊{avg_happiness*100:.0f}%"
+        self.screen.blit(self.font.render(happiness_text, True, happiness_color), (x_offset, y))
+        x_offset += 80
+
+        # Satisfaction
+        satisfaction_color = self._get_satisfaction_color(avg_satisfaction)
+        satisfaction_text = f"⭐{avg_satisfaction*100:.0f}%"
+        self.screen.blit(self.font.render(satisfaction_text, True, satisfaction_color), (x_offset, y))
+        x_offset += 80
+
+        # Separator
+        self.screen.blit(self.font.render("|", True, (100, 100, 100)), (x_offset, y))
+        x_offset += 15
+
+        # Entrance fee and revenue
+        fee_text = f"🎫${self.economy.park_entrance_fee} 💵${self.economy.entrance_revenue}"
+        self.screen.blit(self.font.render(fee_text, True, (200, 255, 200)), (x_offset, y))
+        x_offset += 180
+
+        # Separator
+        self.screen.blit(self.font.render("|", True, (100, 100, 100)), (x_offset, y))
+        x_offset += 15
+
+        # Facilities count
+        facilities_text = f"🍔{num_food_shops} 🥤{num_drink_shops} 🚻{num_restrooms}"
+        self.screen.blit(self.font.render(facilities_text, True, (180, 220, 255)), (x_offset, y))
+        x_offset += 120
+
+        # Separator
+        self.screen.blit(self.font.render("|", True, (100, 100, 100)), (x_offset, y))
+        x_offset += 15
+
+        # Queue status
+        queue_text = f"🎫{connected_queues}/{total_queues}"
+        self.screen.blit(self.font.render(queue_text, True, (180, 220, 255)), (x_offset, y))
+        x_offset += 80
+
+        # Separator
+        self.screen.blit(self.font.render("|", True, (100, 100, 100)), (x_offset, y))
+        x_offset += 15
+
+        # Save/Load controls (right side)
+        controls_text = "F5💾 F9📂"
+        self.screen.blit(self.font.render(controls_text, True, (200, 200, 255)), (x_offset, y))
+
     def draw(self, hover=None):
         self.screen.fill((20,60,90))
         # Supprimer l'ancienne barre en haut
@@ -1992,92 +2142,28 @@ class Game:
         connected_queues = sum(1 for qp in queue_paths if qp.connected_ride)
         total_queues = len(queue_paths)
 
-        # Draw stats panel (top-left corner)
-        stats_bg = pygame.Surface((550, 230), pygame.SRCALPHA)
-        stats_bg.fill((20, 20, 20, 200))  # Semi-transparent dark background
-        self.screen.blit(stats_bg, (8, 8))
-
-        # Main HUD line
-        hud=f"Cash: ${self.economy.cash}  |  Guests: {num_guests} (In: {self.guests_entered} | Out: {self.guests_left})  |  Rides: {len(self.rides)}  |  Shops: {len(self.shops)}{mode_text}"
-        self.screen.blit(self.font.render(hud,True,(255,255,255)),(12,12))
-
-        # Time and park status line
-        y_offset = 32
-        park_status_text = "OPEN" if self.park_open else "CLOSED"
-        park_status_color = (100, 255, 100) if self.park_open else (255, 100, 100)
-        speed_text = "PAUSED" if self.game_speed == 0 else f"x{int(self.game_speed)}"
-        speed_color = (255, 150, 0) if self.game_speed == 0 else (150, 255, 150)
-        time_text = f"Day {self.game_day}  {self.game_hour:02d}:{self.game_minute:02d}"
-
-        self.screen.blit(self.font.render(f"Park:", True, (200,200,200)), (12, y_offset))
-        self.screen.blit(self.font.render(park_status_text, True, park_status_color), (60, y_offset))
-        self.screen.blit(self.font.render(f"|  Time:", True, (200,200,200)), (140, y_offset))
-        self.screen.blit(self.font.render(time_text, True, (200,220,255)), (200, y_offset))
-        self.screen.blit(self.font.render(f"|  Speed:", True, (200,200,200)), (320, y_offset))
-        self.screen.blit(self.font.render(speed_text, True, speed_color), (390, y_offset))
-
-        # Guest satisfaction line with color coding
-        y_offset += 20
-        happiness_color = self._get_satisfaction_color(avg_happiness)
-        satisfaction_color = self._get_satisfaction_color(avg_satisfaction)
-        excitement_color = self._get_satisfaction_color(avg_excitement)
-        self.screen.blit(self.font.render(f"Happiness:", True, (200,200,200)), (12, y_offset))
-        self.screen.blit(self.font.render(f"{avg_happiness*100:.0f}%", True, happiness_color), (110, y_offset))
-
-        self.screen.blit(self.font.render(f"Satisfaction:", True, (200,200,200)), (170, y_offset))
-        self.screen.blit(self.font.render(f"{avg_satisfaction*100:.0f}%", True, satisfaction_color), (270, y_offset))
-
-        # Guest needs line
-        y_offset += 20
+        # Calculate guest needs averages
         avg_hunger = sum(g.hunger for g in self.guests) / num_guests if num_guests > 0 else 1.0
         avg_thirst = sum(g.thirst for g in self.guests) / num_guests if num_guests > 0 else 1.0
         avg_bladder = sum(g.bladder for g in self.guests) / num_guests if num_guests > 0 else 0.0
-        hunger_color = (255, 100, 100) if avg_hunger < 0.3 else (255, 255, 100) if avg_hunger < 0.6 else (100, 255, 100)
-        thirst_color = (255, 100, 100) if avg_thirst < 0.3 else (255, 255, 100) if avg_thirst < 0.6 else (100, 255, 100)
-        bladder_color = (255, 100, 100) if avg_bladder > 0.7 else (255, 255, 100) if avg_bladder > 0.5 else (100, 255, 100)
 
         # Count facilities
         num_food_shops = len([s for s in self.shops if s.defn.shop_type == "food"])
         num_drink_shops = len([s for s in self.shops if s.defn.shop_type == "drink"])
         num_restrooms = len(self.restrooms)
 
-        self.screen.blit(self.font.render(f"Hunger:", True, (200,200,200)), (12, y_offset))
-        self.screen.blit(self.font.render(f"{avg_hunger*100:.0f}%", True, hunger_color), (75, y_offset))
-        self.screen.blit(self.font.render(f"Thirst:", True, (200,200,200)), (130, y_offset))
-        self.screen.blit(self.font.render(f"{avg_thirst*100:.0f}%", True, thirst_color), (185, y_offset))
-        self.screen.blit(self.font.render(f"Bladder:", True, (200,200,200)), (240, y_offset))
-        self.screen.blit(self.font.render(f"{avg_bladder*100:.0f}%", True, bladder_color), (310, y_offset))
-        self.screen.blit(self.font.render(f"|  Facilities: {num_food_shops}F {num_drink_shops}D {num_restrooms}R", True, (180,220,255)), (370, y_offset))
-
-        # Entrance fee and revenue line
-        y_offset += 20
-        entrance_fee_text = f"Entrance Fee: ${self.economy.park_entrance_fee}  |  Revenue: ${self.economy.entrance_revenue}  |  Refused: {self.economy.guests_refused}"
-        self.screen.blit(self.font.render(entrance_fee_text, True, (200,255,200)), (12, y_offset))
-
-        # Employees line
-        y_offset += 20
-        employees_text = f"Employees: {num_engineers}E {num_maintenance}M {num_security}S {num_mascots}Mc"
-        self.screen.blit(self.font.render(employees_text, True, (180,220,255)), (12, y_offset))
-
-        # Litter and bins line
-        y_offset += 20
-        litter_color = (255, 100, 100) if num_litter > 10 else (150, 255, 150) if num_litter < 5 else (255, 255, 150)
-        litter_text = f"Litter: {num_litter}  |  Bins: {num_bins}  |  Queues: {connected_queues}/{total_queues}"
-        self.screen.blit(self.font.render(litter_text, True, litter_color), (12, y_offset))
-
-        # Technical info line (smaller)
-        y_offset += 20
-        tech_info = f"Zoom: {self.renderer.camera.zoom:.2f}  Tile: {int(self.renderer.base_tile_w)}x{int(self.renderer.base_tile_h)}  φ: {self.debug_menu.oblique_tilt:.1f}°"
-        self.screen.blit(self.font.render(tech_info, True, (150,150,150)), (12, y_offset))
-
-        # Save/Load controls line
-        y_offset += 20
-        save_controls = "F5: Quick Save  |  F9: Quick Load"
-        self.screen.blit(self.font.render(save_controls, True, (200,200,255)), (12, y_offset))
-
-        # Dessiner la toolbar et ses sous-menus au premier plan (en dernier)
+        # Dessiner la toolbar et ses sous-menus au premier plan
         self.toolbar.draw(self.screen)
         self.debug_menu.draw(self.screen)
+
+        # Draw top HUD bar (after toolbar to be on top)
+        self._draw_top_hud_bar(
+            num_guests, avg_happiness, avg_satisfaction, avg_excitement,
+            avg_hunger, avg_thirst, avg_bladder,
+            num_food_shops, num_drink_shops, num_restrooms,
+            num_engineers, num_maintenance, num_security, num_mascots,
+            num_litter, num_bins, connected_queues, total_queues
+        )
 
         # Draw entrance fee panel (modal, on top of everything)
         self._draw_entrance_fee_panel()
