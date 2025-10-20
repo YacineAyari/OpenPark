@@ -2547,6 +2547,7 @@ class Game:
                         if 'repair_timer' in emp_data:
                             emp.repair_timer = emp_data.get('repair_timer', 0.0)
                         # Restore target ride reference
+                        target_restored = False
                         if 'target_ride_x' in emp_data and 'target_ride_y' in emp_data:
                             target_x = emp_data['target_ride_x']
                             target_y = emp_data['target_ride_y']
@@ -2554,6 +2555,7 @@ class Game:
                             for ride in self.rides:
                                 if ride.x == target_x and ride.y == target_y:
                                     emp.target_object = ride
+                                    target_restored = True
                                     # If engineer was moving to ride, recalculate path
                                     if emp_data.get('state') == 'moving_to_ride':
                                         from .pathfinding import astar_for_engineers
@@ -2563,6 +2565,8 @@ class Game:
                                         if path:
                                             emp.path = path[1:]  # Exclude starting position
                                     break
+                        # Store flag for later validation
+                        emp._target_restored = target_restored
                     elif emp_def.type == 'maintenance':
                         emp = MaintenanceWorker(emp_def, emp_data['x'], emp_data['y'])
                         if 'placement_type' in emp_data:
@@ -2577,9 +2581,17 @@ class Game:
                     else:
                         continue
                     emp.state = emp_data.get('state', 'idle')
-                    # Reset transitional states to idle
+                    # Reset transitional/invalid states to idle
                     if emp.state == 'moving_to_nearby':
                         emp.state = 'idle'
+                    # If engineer is in "working" or "moving_to_ride" state but has no target restored, reset to idle
+                    if emp_def.type == 'engineer' and emp.state in ['working', 'moving_to_ride']:
+                        if not getattr(emp, '_target_restored', False):
+                            emp.state = 'idle'
+                            DebugConfig.log('employees', f"Engineer {emp.id} had state '{emp_data.get('state')}' but no target ride - reset to idle")
+                        # Clean up temporary flag
+                        if hasattr(emp, '_target_restored'):
+                            delattr(emp, '_target_restored')
                     if 'employee_id' in emp_data:
                         emp.id = emp_data['employee_id']
                     self.employees.append(emp)
