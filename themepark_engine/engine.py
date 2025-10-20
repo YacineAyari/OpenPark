@@ -2619,6 +2619,11 @@ class Game:
                 guest.litter_type = guest_data.get('litter_type', None)
                 guest.litter_hold_timer = guest_data.get('litter_hold_timer', 0.0)
                 guest.litter_hold_duration = guest_data.get('litter_hold_duration', 0.0)
+                guest.shop_timer = guest_data.get('shop_timer', 0.0)
+
+                # Store guest data for reference restoration after all entities are loaded
+                guest._save_data = guest_data
+
                 self.guests.append(guest)
 
             # Restore restrooms
@@ -2672,6 +2677,69 @@ class Game:
             stats_data = game_state['statistics']
             self.guests_entered = stats_data.get('guests_entered', 0)
             self.guests_left = stats_data.get('guests_left', 0)
+
+            # Restore guest references to shops, rides, restrooms
+            for guest in self.guests:
+                if hasattr(guest, '_save_data'):
+                    guest_data = guest._save_data
+
+                    # Restore shop references
+                    if 'current_shop_x' in guest_data and 'current_shop_y' in guest_data:
+                        for shop in self.shops:
+                            if shop.x == guest_data['current_shop_x'] and shop.y == guest_data['current_shop_y']:
+                                guest.current_shop = shop
+                                break
+                    if 'target_shop_x' in guest_data and 'target_shop_y' in guest_data:
+                        for shop in self.shops:
+                            if shop.x == guest_data['target_shop_x'] and shop.y == guest_data['target_shop_y']:
+                                guest.target_shop = shop
+                                break
+                    if 'target_food_x' in guest_data and 'target_food_y' in guest_data:
+                        for shop in self.shops:
+                            if shop.x == guest_data['target_food_x'] and shop.y == guest_data['target_food_y']:
+                                guest.target_food = shop
+                                break
+                    if 'target_drink_x' in guest_data and 'target_drink_y' in guest_data:
+                        for shop in self.shops:
+                            if shop.x == guest_data['target_drink_x'] and shop.y == guest_data['target_drink_y']:
+                                guest.target_drink = shop
+                                break
+
+                    # Restore ride references
+                    if 'current_ride_x' in guest_data and 'current_ride_y' in guest_data:
+                        for ride in self.rides:
+                            if ride.x == guest_data['current_ride_x'] and ride.y == guest_data['current_ride_y']:
+                                guest.current_ride = ride
+                                break
+                    if 'target_ride_x' in guest_data and 'target_ride_y' in guest_data:
+                        for ride in self.rides:
+                            if ride.x == guest_data['target_ride_x'] and ride.y == guest_data['target_ride_y']:
+                                guest.target_ride = ride
+                                break
+
+                    # Restore restroom reference
+                    if 'target_restroom_x' in guest_data and 'target_restroom_y' in guest_data:
+                        for restroom in self.restrooms:
+                            if restroom.x == guest_data['target_restroom_x'] and restroom.y == guest_data['target_restroom_y']:
+                                guest.target_restroom = restroom
+                                break
+
+                    # Clean up temporary save data
+                    delattr(guest, '_save_data')
+
+                # Reset guest state if references couldn't be restored
+                if guest.state == 'shopping' and not guest.current_shop:
+                    guest.state = 'wandering'
+                    DebugConfig.log('guests', f"Guest {guest.id} was shopping but shop not found - reset to wandering")
+                if guest.state == 'riding' and not guest.current_ride:
+                    guest.state = 'wandering'
+                    DebugConfig.log('guests', f"Guest {guest.id} was riding but ride not found - reset to wandering")
+                if guest.state in ['walking_to_shop', 'eating', 'drinking'] and not guest.target_shop and not guest.target_food and not guest.target_drink:
+                    guest.state = 'wandering'
+                    DebugConfig.log('guests', f"Guest {guest.id} was walking to shop but target not found - reset to wandering")
+                if guest.state in ['walking_to_restroom', 'using_restroom'] and not guest.target_restroom:
+                    guest.state = 'wandering'
+                    DebugConfig.log('guests', f"Guest {guest.id} was using restroom but target not found - reset to wandering")
 
             # Update queue system
             self._update_queue_system()

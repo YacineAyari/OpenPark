@@ -187,7 +187,7 @@ def serialize_employee(employee) -> Dict[str, Any]:
 
 def serialize_guest(guest) -> Dict[str, Any]:
     """Serialize a guest to JSON-compatible format"""
-    return {
+    data = {
         'id': guest.id,
         'x': guest.x,
         'y': guest.y,
@@ -209,8 +209,34 @@ def serialize_guest(guest) -> Dict[str, Any]:
         'has_litter': guest.has_litter,
         'litter_type': guest.litter_type,
         'litter_hold_timer': guest.litter_hold_timer,
-        'litter_hold_duration': guest.litter_hold_duration
+        'litter_hold_duration': guest.litter_hold_duration,
+        'shop_timer': guest.shop_timer
     }
+
+    # Save references to shops, rides, restrooms by position
+    if guest.current_shop:
+        data['current_shop_x'] = guest.current_shop.x
+        data['current_shop_y'] = guest.current_shop.y
+    if guest.target_shop:
+        data['target_shop_x'] = guest.target_shop.x
+        data['target_shop_y'] = guest.target_shop.y
+    if guest.current_ride:
+        data['current_ride_x'] = guest.current_ride.x
+        data['current_ride_y'] = guest.current_ride.y
+    if guest.target_ride:
+        data['target_ride_x'] = guest.target_ride.x
+        data['target_ride_y'] = guest.target_ride.y
+    if guest.target_restroom:
+        data['target_restroom_x'] = guest.target_restroom.x
+        data['target_restroom_y'] = guest.target_restroom.y
+    if guest.target_food:
+        data['target_food_x'] = guest.target_food.x
+        data['target_food_y'] = guest.target_food.y
+    if guest.target_drink:
+        data['target_drink_x'] = guest.target_drink.x
+        data['target_drink_y'] = guest.target_drink.y
+
+    return data
 
 
 def serialize_bin(bin_obj) -> Dict[str, Any]:
