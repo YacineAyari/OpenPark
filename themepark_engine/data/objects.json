@@ -55,6 +55,28 @@
       "litter_type": "trash"
     },
     {
+      "id": "shop_hotdog",
+      "name": "Hotdog Stand",
+      "shop_type": "food",
+      "build_cost": 450,
+      "base_price": 4,
+      "sprite": "shops/1F32D.png",
+      "size": [3, 3],
+      "entrance_cost": 0,
+      "litter_type": "trash"
+    },
+    {
+      "id": "shop_fries",
+      "name": "Fries Stand",
+      "shop_type": "food",
+      "build_cost": 400,
+      "base_price": 3,
+      "sprite": "shops/1F35F.png",
+      "size": [3, 3],
+      "entrance_cost": 0,
+      "litter_type": "trash"
+    },
+    {
       "id": "shop_restaurant",
       "name": "Restaurant",
       "shop_type": "food",
