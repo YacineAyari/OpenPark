@@ -28,7 +28,7 @@ class Game:
         self.clock = pygame.time.Clock(); self.font = pygame.font.SysFont('Arial', 16)
         self.grid = MapGrid(64, 64); self.economy = Economy()
         self.queue_manager = SimpleQueueManager()
-        self.litter_manager = LitterManager()  # Add litter management system
+        self.litter_manager = LitterManager(self.grid)  # Add litter management system with grid reference
         data = json.load(open(DATA/'objects.json','r'))
         self.ride_defs = {r['id']: RideDef(**r) for r in data.get('rides', [])}
         self.shop_defs = {s['id']: ShopDef(**s) for s in data.get('shops', [])}
@@ -63,8 +63,6 @@ class Game:
         self.entrance_fee_slider_dragging = False
         self.ride_placement_mode = None  # 'ride', 'entrance', 'exit'
         self.selected_ride = None
-        self.shop_placement_mode = None  # 'shop', 'entrance'
-        self.selected_shop = None
         self.employee_placement_mode = None
         self.last_queue_pos = None  # Track last queue tile for orientation
         self.mouse_direction = 'S'  # Default direction for queue tiles
@@ -177,8 +175,8 @@ class Game:
                     self.grid.set(x, y, TILE_GRASS)
     
     def _is_on_ride(self, gx, gy):
-        """Check if a position is on any ride or shop footprint"""
-        return self.grid.get(gx, gy) in (TILE_RIDE_FOOTPRINT, TILE_SHOP_FOOTPRINT)
+        """Check if a position is on any ride/shop footprint or ride entrance/exit"""
+        return self.grid.get(gx, gy) in (TILE_RIDE_FOOTPRINT, TILE_SHOP_FOOTPRINT, TILE_RIDE_ENTRANCE, TILE_RIDE_EXIT)
     
     def _can_connect_queue_tile(self, gx, gy):
         """Check if a queue tile can be placed at this position (connects to existing queue or is first tile)"""
@@ -525,9 +523,6 @@ class Game:
                                 if not placing.startswith('ride_'):
                                     self.ride_placement_mode = None
                                     self.selected_ride = None
-                                if not placing.startswith('shop_'):
-                                    self.shop_placement_mode = None
-                                    self.selected_shop = None
                                 if not placing.startswith('restroom_'):
                                     self.restroom_placement_mode = None
                                     self.selected_restroom = None
@@ -561,30 +556,41 @@ class Game:
                                         self.last_mouse_pos = e.pos
                                 elif placing.startswith('ride_') and self.ride_placement_mode is None:
                                     rd=self.ride_defs.get(placing)
-                                    if rd and self._can_place_ride(rd, gx, gy):
-                                        new_ride = Ride(rd, gx, gy)
-                                        self.rides.append(new_ride)
-                                        self.economy.add_expense(rd.build_cost)
-                                        # Mark the ride footprint on the map
-                                        self._mark_ride_footprint(new_ride)
-                                        # Force queue system update to connect nearby queues
-                                        self._update_queue_system()
-                                        # Enter entrance placement mode
-                                        self.ride_placement_mode = 'entrance'
-                                        self.selected_ride = new_ride
-                                        placing = 'place_entrance'
-                                elif placing.startswith('shop_') and self.shop_placement_mode is None:
+                                    if rd:
+                                        # Calculate top-left position for centered placement
+                                        place_x, place_y = self._get_placement_position(gx, gy, rd.size[0], rd.size[1])
+                                        if self._can_place_ride(rd, place_x, place_y):
+                                            new_ride = Ride(rd, place_x, place_y)
+                                            self.rides.append(new_ride)
+                                            self.economy.add_expense(rd.build_cost)
+                                            # Mark the ride footprint on the map
+                                            self._mark_ride_footprint(new_ride)
+                                            # Force queue system update to connect nearby queues
+                                            self._update_queue_system()
+                                            # Enter entrance placement mode
+                                            self.ride_placement_mode = 'entrance'
+                                            self.selected_ride = new_ride
+                                            placing = 'place_entrance'
+                                elif placing.startswith('shop_'):
                                     sd=self.shop_defs.get(placing)
-                                    if sd and self._can_place_shop(sd, gx, gy):
-                                        new_shop = Shop(sd, gx, gy)
-                                        self.shops.append(new_shop)
-                                        self.economy.add_expense(sd.build_cost)
-                                        # Mark the shop footprint on the map
-                                        self._mark_shop_footprint(new_shop)
-                                        # Enter entrance placement mode
-                                        self.shop_placement_mode = 'entrance'
-                                        self.selected_shop = new_shop
-                                        placing = 'place_shop_entrance'
+                                    if sd:
+                                        # Calculate top-left position for centered placement
+                                        place_x, place_y = self._get_placement_position(gx, gy, sd.size[0], sd.size[1])
+                                        if self._can_place_shop(sd, place_x, place_y):
+                                            new_shop = Shop(sd, place_x, place_y)
+                                            self.shops.append(new_shop)
+                                            self.economy.add_expense(sd.build_cost)
+                                            # Mark the shop footprint on the map
+                                            self._mark_shop_footprint(new_shop)
+                                            # Auto-create entrance on middle south tile
+                                            width, height = sd.size
+                                            entrance_x = place_x + width // 2
+                                            entrance_y = place_y + height - 1
+                                            entrance = ShopEntrance(sd.id, entrance_x, entrance_y, 'S')
+                                            new_shop.entrance = entrance
+                                            # Mark shop as connected since we validated walk path in _can_place_shop
+                                            new_shop.connected_to_path = True
+                                            DebugConfig.log('engine', f"Placed {sd.name} at ({place_x}, {place_y}) with auto south entrance at ({entrance_x}, {entrance_y})")
                                 elif self.ride_placement_mode == 'entrance' and self.selected_ride:
                                     if self.selected_ride.can_place_entrance(gx, gy):
                                         self.selected_ride.place_entrance(gx, gy)
@@ -602,31 +608,23 @@ class Game:
                                         # Exit placement mode
                                         self.ride_placement_mode = None
                                         self.selected_ride = None
-                                elif self.shop_placement_mode == 'entrance' and self.selected_shop:
-                                    if self._can_place_shop_entrance(self.selected_shop, gx, gy):
-                                        entrance = ShopEntrance(self.selected_shop.defn.id, gx, gy, 'N')
-                                        self.selected_shop.entrance = entrance
-                                        self.grid.set(gx, gy, TILE_SHOP_ENTRANCE)
-                                        self.economy.add_expense(self.selected_shop.defn.entrance_cost)
-                                        # Check if entrance is connected to a walk path
-                                        self._check_shop_path_connection(self.selected_shop)
-                                        # Exit placement mode
-                                        self.shop_placement_mode = None
-                                        self.selected_shop = None
                                 elif placing.startswith('restroom_'):
                                     # Handle restroom placement (like bins - adjacent to walk paths)
                                     rd = self.restroom_defs.get(placing)
-                                    if rd and self._can_place_restroom(rd, gx, gy):
-                                        # Check if restroom is adjacent to a walk path
-                                        if self._is_restroom_adjacent_to_path(rd, gx, gy):
-                                            new_restroom = Restroom(rd, gx, gy)
-                                            self.restrooms.append(new_restroom)
-                                            self.economy.add_expense(rd.build_cost)
-                                            # Mark the restroom footprint on the map
-                                            self._mark_restroom_footprint(new_restroom)
-                                            # Check path connection
-                                            self._check_restroom_path_connection(new_restroom)
-                                            DebugConfig.log('engine', f"Placed {rd.name} at ({gx}, {gy})")
+                                    if rd:
+                                        # Calculate top-left position for centered placement
+                                        place_x, place_y = self._get_placement_position(gx, gy, rd.size[0], rd.size[1])
+                                        if self._can_place_restroom(rd, place_x, place_y):
+                                            # Check if restroom is adjacent to a walk path
+                                            if self._is_restroom_adjacent_to_path(rd, place_x, place_y):
+                                                new_restroom = Restroom(rd, place_x, place_y)
+                                                self.restrooms.append(new_restroom)
+                                                self.economy.add_expense(rd.build_cost)
+                                                # Mark the restroom footprint on the map
+                                                self._mark_restroom_footprint(new_restroom)
+                                                # Check path connection
+                                                self._check_restroom_path_connection(new_restroom)
+                                                DebugConfig.log('engine', f"Placed {rd.name} at ({place_x}, {place_y})")
                                 elif placing.startswith('employee_'):
                                     # Handle employee placement
                                     employee_def = self.employee_defs.get(placing)
@@ -716,13 +714,8 @@ class Game:
                             if shop:
                                 # Remove shop footprint
                                 self._clear_shop_footprint(shop)
-                                # Remove shop entrance if exists
-                                if shop.entrance:
-                                    self.grid.set(shop.entrance.x, shop.entrance.y, TILE_GRASS)
-                                # Reset placement mode if this was the selected shop
-                                if self.selected_shop == shop:
-                                    self.shop_placement_mode = None
-                                    self.selected_shop = None
+                                # Remove from shops list
+                                self.shops.remove(shop)
                             # Check if clicking on a restroom
                             restroom = self._get_restroom_at_position(gx, gy)
                             if restroom:
@@ -799,6 +792,23 @@ class Game:
         if keys[pygame.K_s] or keys[pygame.K_DOWN]: self.renderer.camera.pan(0,+sp)
         mx,my=pygame.mouse.get_pos(); hover=self.renderer.screen_to_grid(mx,my)
         return True, placing, hover
+
+    def _get_placement_position(self, hover_x, hover_y, width, height):
+        """
+        Calculate top-left corner position for centered placement
+
+        When placing multi-tile objects, we want the cursor to be at the center
+        of the object, not the top-left corner. This method converts the cursor
+        position to the top-left corner position.
+
+        Args:
+            hover_x, hover_y: Current cursor position on grid
+            width, height: Size of the object in tiles
+
+        Returns:
+            (x, y): Top-left corner position for placement
+        """
+        return (hover_x - width // 2, hover_y - height // 2)
 
     def _create_park_entrance(self):
         """Create fixed park entrance at south center of map"""
@@ -1210,7 +1220,11 @@ class Game:
     def _can_place_shop(self, shop_def, x, y):
         """Vérifier si un shop peut être placé à la position donnée"""
         width, height = shop_def.size
-        
+
+        # Enforce 3x3 minimum size
+        if width < 3 or height < 3:
+            return False
+
         # Vérifier que toutes les tuiles sont dans les limites et libres
         for dx in range(width):
             for dy in range(height):
@@ -1219,7 +1233,22 @@ class Game:
                     return False
                 if self.grid.get(gx, gy) != TILE_GRASS:
                     return False
-        
+
+        # Vérifier que la case du milieu sud est adjacente à un chemin (TILE_WALK)
+        # Middle south tile is at (x + width // 2, y + height - 1)
+        entrance_x = x + width // 2
+        entrance_y = y + height - 1
+
+        # Check if the tile directly south of the middle south tile is a walk path
+        south_tile_x = entrance_x
+        south_tile_y = entrance_y + 1
+
+        if not self.grid.in_bounds(south_tile_x, south_tile_y):
+            return False
+
+        if self.grid.get(south_tile_x, south_tile_y) != TILE_WALK:
+            return False
+
         return True
 
     def _mark_shop_footprint(self, shop):
@@ -1229,57 +1258,6 @@ class Game:
             for dy in range(height):
                 gx, gy = shop.x + dx, shop.y + dy
                 self.grid.set(gx, gy, TILE_SHOP_FOOTPRINT)
-
-    def _can_place_shop_entrance(self, shop, x, y):
-        """Vérifier si une entrée de shop peut être placée à la position donnée"""
-        width, height = shop.defn.size
-        
-        # L'entrée doit être adjacente au shop (pas dans les coins extérieurs)
-        shop_left = shop.x
-        shop_right = shop.x + width - 1
-        shop_top = shop.y
-        shop_bottom = shop.y + height - 1
-        
-        # Vérifier que l'entrée est adjacente au shop
-        adjacent = False
-        if x == shop_left - 1 and shop_top <= y <= shop_bottom:  # À gauche
-            adjacent = True
-        elif x == shop_right + 1 and shop_top <= y <= shop_bottom:  # À droite
-            adjacent = True
-        elif y == shop_top - 1 and shop_left <= x <= shop_right:  # En haut
-            adjacent = True
-        elif y == shop_bottom + 1 and shop_left <= x <= shop_right:  # En bas
-            adjacent = True
-        
-        if not adjacent:
-            return False
-        
-        # Vérifier que la position est libre
-        if not self.grid.in_bounds(x, y) or self.grid.get(x, y) != TILE_GRASS:
-            return False
-        
-        return True
-
-    def _check_shop_path_connection(self, shop):
-        """Vérifier si l'entrée du shop est connectée à un chemin"""
-        if not shop.entrance:
-            return
-        
-        # Vérifier les tuiles adjacentes à l'entrée
-        entrance_x, entrance_y = shop.entrance.x, shop.entrance.y
-        adjacent_positions = [
-            (entrance_x - 1, entrance_y),  # Gauche
-            (entrance_x + 1, entrance_y),  # Droite
-            (entrance_x, entrance_y - 1),  # Haut
-            (entrance_x, entrance_y + 1),  # Bas
-        ]
-        
-        for gx, gy in adjacent_positions:
-            if self.grid.in_bounds(gx, gy) and self.grid.get(gx, gy) == TILE_WALK:
-                shop.connected_to_path = True
-                return
-        
-        shop.connected_to_path = False
 
     def _is_on_shop(self, x, y):
         """Vérifier si une position est sur un shop"""
@@ -1305,7 +1283,17 @@ class Game:
     def _update_shop_connections(self):
         """Mettre à jour les connexions de tous les shops"""
         for shop in self.shops:
-            self._check_shop_path_connection(shop)
+            # Check if middle south tile is still adjacent to a walk path
+            width, height = shop.defn.size
+            entrance_x = shop.x + width // 2
+            entrance_y = shop.y + height - 1
+            south_tile_x = entrance_x
+            south_tile_y = entrance_y + 1
+
+            if self.grid.in_bounds(south_tile_x, south_tile_y) and self.grid.get(south_tile_x, south_tile_y) == TILE_WALK:
+                shop.connected_to_path = True
+            else:
+                shop.connected_to_path = False
 
     # ========== Restroom Helper Methods ==========
     def _can_place_restroom(self, restroom_def, x, y):
@@ -1450,8 +1438,12 @@ class Game:
             # Chercher un shop
             available_shops = []
             for shop in self.shops:
-                if shop.entrance and shop.connected_to_path:
-                    shop_entrance = (shop.entrance.x, shop.entrance.y)
+                if shop.connected_to_path:
+                    # Calculate shop entrance position (middle south tile)
+                    width, height = shop.defn.size
+                    entrance_x = shop.x + width // 2
+                    entrance_y = shop.y + height - 1
+                    shop_entrance = (entrance_x, entrance_y)
                     path = astar(self.grid, (guest.grid_x, guest.grid_y), shop_entrance)
                     if path:
                         available_shops.append((shop, shop_entrance, path))
@@ -1507,8 +1499,12 @@ class Game:
 
         for shop in self.shops:
             # Only consider food shops that are connected to paths
-            if shop.defn.shop_type == "food" and shop.entrance and shop.connected_to_path:
-                shop_entrance = (shop.entrance.x, shop.entrance.y)
+            if shop.defn.shop_type == "food" and shop.connected_to_path:
+                # Calculate shop entrance position (middle south tile)
+                width, height = shop.defn.size
+                entrance_x = shop.x + width // 2
+                entrance_y = shop.y + height - 1
+                shop_entrance = (entrance_x, entrance_y)
                 path = astar(self.grid, (guest.grid_x, guest.grid_y), shop_entrance)
                 if path:
                     distance = len(path)
@@ -1529,8 +1525,12 @@ class Game:
 
         for shop in self.shops:
             # Only consider drink shops that are connected to paths
-            if shop.defn.shop_type == "drink" and shop.entrance and shop.connected_to_path:
-                shop_entrance = (shop.entrance.x, shop.entrance.y)
+            if shop.defn.shop_type == "drink" and shop.connected_to_path:
+                # Calculate shop entrance position (middle south tile)
+                width, height = shop.defn.size
+                entrance_x = shop.x + width // 2
+                entrance_y = shop.y + height - 1
+                shop_entrance = (entrance_x, entrance_y)
                 path = astar(self.grid, (guest.grid_x, guest.grid_y), shop_entrance)
                 if path:
                     distance = len(path)
@@ -1759,10 +1759,19 @@ class Game:
 
         for employee in self.employees:
             employee_sprite = self.sprite(employee.defn.sprite)
-            objs.append((employee_sprite,(employee.x,employee.y)))
-            # Indicateur visuel si l'employé travaille ou se déplace
-            indicator_x = employee.x + 0.5
-            indicator_y = employee.y - 0.5
+            # Use render position for smooth movement (MaintenanceWorker has interpolation)
+            from .employees import MaintenanceWorker
+            if isinstance(employee, MaintenanceWorker):
+                render_pos = employee.get_render_position()
+                objs.append((employee_sprite, render_pos))
+                # Use render position for indicator too
+                indicator_x = render_pos[0] + 0.5
+                indicator_y = render_pos[1] - 0.5
+            else:
+                objs.append((employee_sprite,(employee.x,employee.y)))
+                # Indicateur visuel si l'employé travaille ou se déplace
+                indicator_x = employee.x + 0.5
+                indicator_y = employee.y - 0.5
 
             if employee.state == "working":
                 # Dessiner un indicateur vert pour montrer que l'employé travaille
@@ -1873,30 +1882,34 @@ class Game:
         self.renderer.draw_objects(objs)
         if hover and self.grid.in_bounds(*hover):
             ok=True
-            if self.toolbar.active.startswith('shop_') and self.shop_placement_mode is None:
+            if self.toolbar.active.startswith('shop_'):
                 sd = self.shop_defs.get(self.toolbar.active)
                 if sd:
-                    ok = self._can_place_shop(sd, *hover)
-                    # Draw shop preview
-                    self.renderer.draw_ride_preview(hover[0], hover[1], sd.size[0], sd.size[1], ok=ok)
+                    # Calculate top-left position for centered placement
+                    place_x, place_y = self._get_placement_position(hover[0], hover[1], sd.size[0], sd.size[1])
+                    ok = self._can_place_shop(sd, place_x, place_y)
+                    # Draw shop preview at centered position
+                    self.renderer.draw_ride_preview(place_x, place_y, sd.size[0], sd.size[1], ok=ok)
             elif self.toolbar.active.startswith('restroom_'):
                 rd = self.restroom_defs.get(self.toolbar.active)
                 if rd:
-                    ok = self._can_place_restroom(rd, *hover) and self._is_restroom_adjacent_to_path(rd, *hover)
-                    # Draw restroom preview
-                    self.renderer.draw_ride_preview(hover[0], hover[1], rd.size[0], rd.size[1], ok=ok)
+                    # Calculate top-left position for centered placement
+                    place_x, place_y = self._get_placement_position(hover[0], hover[1], rd.size[0], rd.size[1])
+                    ok = self._can_place_restroom(rd, place_x, place_y) and self._is_restroom_adjacent_to_path(rd, place_x, place_y)
+                    # Draw restroom preview at centered position
+                    self.renderer.draw_ride_preview(place_x, place_y, rd.size[0], rd.size[1], ok=ok)
             elif self.toolbar.active.startswith('ride_'):
                 rd = self.ride_defs.get(self.toolbar.active)
                 if rd:
-                    ok = self._can_place_ride(rd, *hover)
-                    # Draw ride preview
-                    self.renderer.draw_ride_preview(hover[0], hover[1], rd.size[0], rd.size[1], ok=ok)
+                    # Calculate top-left position for centered placement
+                    place_x, place_y = self._get_placement_position(hover[0], hover[1], rd.size[0], rd.size[1])
+                    ok = self._can_place_ride(rd, place_x, place_y)
+                    # Draw ride preview at centered position
+                    self.renderer.draw_ride_preview(place_x, place_y, rd.size[0], rd.size[1], ok=ok)
             elif self.ride_placement_mode == 'entrance' and self.selected_ride:
                 ok = self.selected_ride.can_place_entrance(*hover)
             elif self.ride_placement_mode == 'exit' and self.selected_ride:
                 ok = self.selected_ride.can_place_exit(*hover)
-            elif self.shop_placement_mode == 'entrance' and self.selected_shop:
-                ok = self._can_place_shop_entrance(self.selected_shop, *hover)
             elif self.toolbar.active == 'walk_path':
                 ok = not self._is_on_ride(*hover)
             elif self.toolbar.active == 'queue_path':
@@ -1916,7 +1929,7 @@ class Game:
             
             # Only draw single-tile highlight if not drawing multi-tile preview
             if not ((self.toolbar.active.startswith('ride_') and self.ride_defs.get(self.toolbar.active)) or
-                    (self.toolbar.active.startswith('shop_') and self.shop_defs.get(self.toolbar.active) and self.shop_placement_mode is None) or
+                    (self.toolbar.active.startswith('shop_') and self.shop_defs.get(self.toolbar.active)) or
                     (self.toolbar.active.startswith('restroom_') and self.restroom_defs.get(self.toolbar.active))):
                 self.renderer.draw_highlight(*hover, ok=ok)
         

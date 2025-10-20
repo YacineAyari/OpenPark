@@ -259,7 +259,17 @@ class MaintenanceWorker(Employee):
         self.lawn_mowing_direction = 1  # 1 = right/down, -1 = left/up
         self.lawn_mowing_row = 0  # Current row/column in pattern
         self.mowing_speed = 0.3  # Duration to mow one tile (seconds)
-        
+
+    def get_render_position(self):
+        """Get the position to render the worker (interpolated during movement)"""
+        # If moving, lerp between current and target
+        if self.is_moving and self.move_progress > 0:
+            t = min(1.0, self.move_progress / self.move_duration)
+            lerp_x = self.x + (self.target_x - self.x) * t
+            lerp_y = self.y + (self.target_y - self.y) * t
+            return (lerp_x, lerp_y)
+        return (float(self.x), float(self.y))
+
     def set_placement_type(self, tile_type):
         """Définir le type de placement (chemin ou pelouse)"""
         if tile_type == 1:  # TILE_WALK
@@ -281,9 +291,10 @@ class MaintenanceWorker(Employee):
         DebugConfig.log('employees', f"Maintenance worker {self.id} searching for litter in {len(litter_manager.litters)} litters")
 
         for litter in litter_manager.litters:
-            # Vérifier si le détritus est sur un chemin (TILE_WALK = 1) ou file d'attente (TILE_QUEUE_PATH = 5)
+            # Vérifier si le détritus est sur un chemin, file d'attente, entrée ou sortie d'attraction
+            # TILE_WALK = 1, TILE_RIDE_ENTRANCE = 2, TILE_RIDE_EXIT = 3, TILE_QUEUE_PATH = 5
             tile_type = grid.get(litter.x, litter.y)
-            if grid.in_bounds(litter.x, litter.y) and tile_type in [1, 5]:  # TILE_WALK or TILE_QUEUE_PATH
+            if grid.in_bounds(litter.x, litter.y) and tile_type in [1, 2, 3, 5]:
                 distance = abs(self.x - litter.x) + abs(self.y - litter.y)
                 if distance <= self.patrol_radius and distance < min_distance:
                     min_distance = distance

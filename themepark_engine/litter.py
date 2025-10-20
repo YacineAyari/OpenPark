@@ -77,18 +77,69 @@ class Bin:
 
 class LitterManager:
     """Manages all litter and bins in the park"""
-    
-    def __init__(self):
+
+    def __init__(self, grid=None):
         self.litters: List[Litter] = []
         self.bins: List[Bin] = []
-        
+        self.grid = grid  # Reference to the map grid for tile validation
+
+    def set_grid(self, grid):
+        """Set the grid reference after initialization"""
+        self.grid = grid
+
+    def _find_valid_litter_position(self, x: int, y: int) -> Optional[Tuple[int, int]]:
+        """
+        Find a valid position for litter (TILE_WALK or TILE_QUEUE_PATH only)
+        Returns the closest valid position or None if none found
+
+        NOTE: We only allow litter on walk paths and queue paths, NOT on ride entrance/exit
+        because those tiles are visually covered by ride sprites, making litter appear
+        to be floating on top of buildings.
+        """
+        if not self.grid:
+            # If no grid available, use original position (backward compatibility)
+            return (x, y)
+
+        # TILE_WALK = 1, TILE_QUEUE_PATH = 5
+        # Explicitly NOT including TILE_RIDE_ENTRANCE (2) or TILE_RIDE_EXIT (3)
+        # to avoid visual issues with litter appearing on top of ride sprites
+        VALID_TILES = [1, 5]  # Walk paths and Queue paths only
+
+        # Check current position first
+        if self.grid.in_bounds(x, y) and self.grid.get(x, y) in VALID_TILES:
+            return (x, y)
+
+        # Search in expanding radius (1, then 2, then 3 tiles away)
+        for radius in range(1, 4):
+            # Check all positions at this radius
+            for dx in range(-radius, radius + 1):
+                for dy in range(-radius, radius + 1):
+                    # Skip if not at edge of radius square (to search in expanding rings)
+                    if abs(dx) != radius and abs(dy) != radius:
+                        continue
+
+                    check_x, check_y = x + dx, y + dy
+                    if self.grid.in_bounds(check_x, check_y) and self.grid.get(check_x, check_y) in VALID_TILES:
+                        return (check_x, check_y)
+
+        # No valid position found within 3 tiles
+        return None
+
     def add_litter(self, x: int, y: int, litter_type: str = None) -> Optional[Litter]:
-        """Add a new piece of litter at position"""
+        """Add a new piece of litter at position (or nearest valid position)"""
+        # Find valid position for litter
+        valid_pos = self._find_valid_litter_position(x, y)
+        if not valid_pos:
+            # No valid position found, don't create litter
+            return None
+
+        litter_x, litter_y = valid_pos
+
         # Check if tile already has too much litter
-        litter_on_tile = self.get_litter_at(x, y)
+        litter_on_tile = self.get_litter_at(litter_x, litter_y)
         if len(litter_on_tile) >= 3:  # Max 3 per tile
             return None
-        
+
         # If no type specified, choose randomly
         if litter_type is None:
             # Weight the probabilities: 50% soda, 40% trash, 10% vomit
@@ -99,8 +150,8 @@ class LitterManager:
                 litter_type = "trash"
             else:
                 litter_type = "vomit"
-            
-        litter = Litter(x, y, litter_type)
+
+        litter = Litter(litter_x, litter_y, litter_type)
         self.litters.append(litter)
         return litter
     

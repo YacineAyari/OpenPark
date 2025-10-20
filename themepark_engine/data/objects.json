@@ -39,7 +39,7 @@
       "build_cost": 400,
       "base_price": 2,
       "sprite": "shops/1F964.png",
-      "size": [2, 2],
+      "size": [3, 3],
       "entrance_cost": 0,
       "litter_type": "soda"
     },
