@@ -63,7 +63,9 @@ dmypy.json
 # Game specific
 *.log
 saves/
+# Ignore screenshots except in assets (for README)
 screenshots/
+!themepark_engine/assets/screenshots/
 *.bak
 
 # OS

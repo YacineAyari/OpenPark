@@ -41,15 +41,17 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 
 ## 📸 Screenshots
 
-*Coming soon - Captures d'écran du jeu en action*
+![OpenPark Gameplay](themepark_engine/assets/screenshots/Screenshot%20From%202025-10-21%2010-36-09.png)
 
-**Screenshots à ajouter:**
-- 🎡 Vue d'ensemble d'un parc avec attractions, chemins, files d'attente
-- 👥 Indicateurs de satisfaction colorés au-dessus des visiteurs (🟢🟡🔴)
-- 📊 Panneau de statistiques en temps réel (top-left)
-- 👷 Employés en action (maintenance worker cleaning, engineer repairing, mascot entertaining)
-- 🔧 Menu debug montrant les réglages de projection oblique
-- 🎢 Queue serpentine connectée à une attraction
+*Vue d'ensemble d'OpenPark avec HUD iconographique, toolbar redesignée, attractions, chemins et visiteurs*
+
+**Fonctionnalités visibles:**
+- 🎨 HUD horizontal avec icônes OpenMoji 32x32px et tooltips
+- 🎯 Toolbar icon-only avec 7 catégories (Chemins, Attractions, Boutiques, Employés, Installations, Économie, Outils)
+- 🎡 Projection oblique configurable avec rendu isométrique
+- 👥 Visiteurs avec indicateurs de satisfaction colorés
+- 📊 Statistiques en temps réel (argent, visiteurs, besoins, employés, litter)
+- 🚪 Système modal de sauvegarde/chargement
 
 ---
 
