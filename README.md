@@ -323,6 +323,7 @@ MIT License - Voir [LICENSE](LICENSE) pour plus de détails.
 - **Développement**: Projet open source communautaire en "vibe coding"
 - **Assistants IA**: Claude Sonnet 4.5 (Anthropic) & GPT-5 (OpenAI)
 - **Engine**: Python + Pygame
+- **Icônes/Sprites**: [OpenMoji](https://openmoji.org/) - Open source emojis sous licence [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)
 - **Méthodologie**: Full AI-assisted development
 
 ### 🤖 IA Contributors
