@@ -9,18 +9,46 @@ class Toolbar:
         self.employee_defs = employee_defs or {}
         self.bin_defs = bin_defs or {}
         self.restroom_defs = restroom_defs or {}
+        self._load_toolbar_icons()
         self._build_groups()
         self.active = 'walk_path'
         self.hovered_button = None
         self.expanded_group = None  # Groupe actuellement ouvert
         self.hovered_subitem = None
     
+    def _load_toolbar_icons(self):
+        """Load icons for toolbar buttons (53x53px - agrandis d'un tiers)"""
+        from . import assets
+        icon_size = (53, 53)
+        self.toolbar_icons = {}
+
+        icon_map = {
+            'paths': '1F6E4.png',  # Railway track (better for paths)
+            'rides': 'rides/1F3A2.png',  # Roller coaster
+            'shops': 'shops/1F381.png',  # Gift/shop
+            'employees': 'employees/1F477.png',  # Engineer
+            'facilities': 'infrastructure/1F6BB.png',  # Restroom
+            'economy': '1F4B0.png',  # Money bag (economy)
+            'tools': 'infrastructure/1F6AA.png',  # Door (tools)
+        }
+
+        for name, path in icon_map.items():
+            try:
+                sprite = assets.load_image(path)
+                scaled = pygame.transform.smoothscale(sprite, icon_size)
+                self.toolbar_icons[name] = scaled
+            except:
+                # Fallback to colored rectangle
+                fallback = pygame.Surface(icon_size, pygame.SRCALPHA)
+                fallback.fill((100, 100, 100))
+                self.toolbar_icons[name] = fallback
+
     def _build_groups(self):
         """Build grouped toolbar items"""
         self.groups = {
             'paths': {
                 'name': 'Chemins',
-                'icon': '🛤️',
+                'tooltip': 'Chemins - Chemins piétons et files d\'attente',
                 'items': [
                     ('Walk Path', 'walk_path', 0),  # Prix gratuit
                     ('Queue Path', 'queue_path', 0)  # Prix gratuit
@@ -28,35 +56,39 @@ class Toolbar:
             },
             'rides': {
                 'name': 'Attractions',
-                'icon': '🎢',
+                'tooltip': 'Attractions - Manèges et attractions',
                 'items': []
             },
             'shops': {
                 'name': 'Boutiques',
-                'icon': '🏪',
+                'tooltip': 'Boutiques - Magasins de nourriture et cadeaux',
                 'items': []
             },
             'employees': {
                 'name': 'Employés',
-                'icon': '👷',
+                'tooltip': 'Employés - Personnel du parc',
                 'items': []
             },
-            'bins': {
-                'name': 'Poubelles',
-                'icon': '🗑️',
+            'facilities': {
+                'name': 'Installations',
+                'tooltip': 'Installations - Toilettes et poubelles',
                 'items': []
             },
-            'restrooms': {
-                'name': 'Toilettes',
-                'icon': '🚻',
-                'items': []
+            'economy': {
+                'name': 'Économie',
+                'tooltip': 'Économie - Gestion financière du parc',
+                'items': [
+                    ('Prix d\'entrée', 'entrance_fee_config', 0)
+                ]
             },
             'tools': {
                 'name': 'Outils',
-                'icon': '🔧',
+                'tooltip': 'Outils - Configuration et debug',
                 'items': [
-                    ('Prix d\'entrée', 'entrance_fee_config', 0),
-                    ('Debug', 'debug_toggle', 0)
+                    ('Debug', 'debug_toggle', 0),
+                    ('Sauvegarder', 'save_game', 0),
+                    ('Charger', 'load_game', 0),
+                    ('Quitter', 'quit_game', 0)
                 ]
             }
         }
@@ -72,14 +104,13 @@ class Toolbar:
         # Add employees dynamically
         for emp_id, emp_def in self.employee_defs.items():
             self.groups['employees']['items'].append((emp_def.name, emp_id, emp_def.salary))
-        
-        # Add bins dynamically
-        for bin_id, bin_def in self.bin_defs.items():
-            self.groups['bins']['items'].append((bin_def.name, bin_id, bin_def.cost))
 
-        # Add restrooms dynamically
+        # Add bins and restrooms to facilities group
+        for bin_id, bin_def in self.bin_defs.items():
+            self.groups['facilities']['items'].append((bin_def.name, bin_id, bin_def.cost))
+
         for restroom_id, restroom_def in self.restroom_defs.items():
-            self.groups['restrooms']['items'].append((restroom_def.name, restroom_id, restroom_def.build_cost))
+            self.groups['facilities']['items'].append((restroom_def.name, restroom_id, restroom_def.build_cost))
     
     def update_definitions(self, ride_defs=None, shop_defs=None, employee_defs=None):
         """Update the definitions and rebuild groups"""
@@ -117,6 +148,9 @@ class Toolbar:
             elif group_id == 'shops':
                 bg_color = (100, 100, 60) if self.expanded_group == group_id else (60, 60, 40)
                 border_color = (200, 200, 100) if self.expanded_group == group_id else (120, 120, 80)
+            elif group_id == 'economy':
+                bg_color = (100, 80, 60) if self.expanded_group == group_id else (60, 50, 40)
+                border_color = (200, 160, 100) if self.expanded_group == group_id else (120, 100, 80)
             else:  # tools
                 bg_color = (100, 60, 60) if self.expanded_group == group_id else (60, 40, 40)
                 border_color = (200, 100, 100) if self.expanded_group == group_id else (120, 80, 80)
@@ -127,23 +161,69 @@ class Toolbar:
                 bg_color = tuple(min(255, c + 20) for c in bg_color)
                 border_color = tuple(min(255, c + 30) for c in border_color)
             
-            # Dessiner le bouton du groupe
-            rect = pygame.Rect(x, toolbar_y + 6, 140, 36)
+            # Dessiner le bouton du groupe (icône uniquement, agrandi d'un tiers)
+            rect = pygame.Rect(x, toolbar_y + 2, 58, 44)
             pygame.draw.rect(screen, bg_color, rect)
             pygame.draw.rect(screen, border_color, rect, 2)
-            
-            # Texte du groupe avec icône
-            group_text = f"{group_data['icon']} {group_data['name']}"
-            text_surface = self.font.render(group_text, True, (255, 255, 255))
-            text_rect = text_surface.get_rect(center=(rect.centerx, rect.centery))
-            screen.blit(text_surface, text_rect)
-            
-            x += 150
+
+            # Dessiner l'icône au centre du bouton
+            if group_id in self.toolbar_icons:
+                icon = self.toolbar_icons[group_id]
+                icon_x = rect.centerx - 26  # Center 53px icon
+                icon_y = rect.centery - 26
+                screen.blit(icon, (icon_x, icon_y))
+
+            x += 65
         
         # Dessiner le sous-menu si un groupe est ouvert
         if self.expanded_group and self.expanded_group in self.groups:
             self._draw_submenu(screen, toolbar_y)
+
+        # Dessiner le tooltip si un bouton est survolé
+        if self.hovered_button and not self.expanded_group:
+            self._draw_toolbar_tooltip(screen, toolbar_y)
     
+    def _draw_toolbar_tooltip(self, screen, toolbar_y):
+        """Draw tooltip for toolbar buttons"""
+        if self.hovered_button not in self.groups:
+            return
+
+        group_data = self.groups[self.hovered_button]
+        tooltip_text = group_data.get('tooltip', group_data['name'])
+
+        # Calculate button position
+        group_index = list(self.groups.keys()).index(self.hovered_button)
+        button_x = 12 + group_index * 65
+        button_rect = pygame.Rect(button_x, toolbar_y + 2, 58, 44)
+
+        # Render tooltip
+        tooltip_font = pygame.font.SysFont('Arial', 12)
+        tooltip_surface = tooltip_font.render(tooltip_text, True, (255, 255, 255))
+        tooltip_width = tooltip_surface.get_width() + 10
+        tooltip_height = tooltip_surface.get_height() + 6
+
+        # Position tooltip above the button
+        tooltip_x = button_rect.centerx - tooltip_width // 2
+        tooltip_y = button_rect.top - tooltip_height - 5
+
+        # Ensure tooltip stays on screen
+        if tooltip_x + tooltip_width > screen.get_width():
+            tooltip_x = screen.get_width() - tooltip_width - 5
+        if tooltip_x < 5:
+            tooltip_x = 5
+
+        # Draw background
+        tooltip_bg = pygame.Surface((tooltip_width, tooltip_height), pygame.SRCALPHA)
+        tooltip_bg.fill((40, 40, 40, 240))
+        screen.blit(tooltip_bg, (tooltip_x, tooltip_y))
+
+        # Draw border
+        pygame.draw.rect(screen, (200, 200, 200),
+                       (tooltip_x, tooltip_y, tooltip_width, tooltip_height), 1)
+
+        # Draw text
+        screen.blit(tooltip_surface, (tooltip_x + 5, tooltip_y + 3))
+
     def _draw_submenu(self, screen, toolbar_y):
         """Dessiner le sous-menu avec les éléments du groupe"""
         group_data = self.groups[self.expanded_group]
@@ -154,7 +234,7 @@ class Toolbar:
         
         # Calculer la position du sous-menu
         group_index = list(self.groups.keys()).index(self.expanded_group)
-        submenu_x = 12 + group_index * 150
+        submenu_x = 12 + group_index * 65
         submenu_y = toolbar_y - len(items) * 40 - 10  # Au-dessus de la toolbar
         
         # Fond du sous-menu
@@ -172,6 +252,9 @@ class Toolbar:
         elif self.expanded_group == 'shops':
             bg_color = (60, 60, 40)
             border_color = (120, 120, 80)
+        elif self.expanded_group == 'economy':
+            bg_color = (60, 50, 40)
+            border_color = (120, 100, 80)
         else:  # tools
             bg_color = (60, 40, 40)
             border_color = (120, 80, 80)
@@ -234,14 +317,14 @@ class Toolbar:
             
             if items:
                 group_index = list(self.groups.keys()).index(self.expanded_group)
-                submenu_x = 12 + group_index * 150
+                submenu_x = 12 + group_index * 65
                 submenu_y = toolbar_y - len(items) * 40 - 10
                 submenu_width = 200
-                
+
                 # Vérifier si la souris est dans le sous-menu
-                if (submenu_x <= pos[0] <= submenu_x + submenu_width and 
+                if (submenu_x <= pos[0] <= submenu_x + submenu_width and
                     submenu_y <= pos[1] <= submenu_y + len(items) * 40 + 10):
-                    
+
                     # Trouver l'élément survolé
                     for i, (name, value, price) in enumerate(items):
                         item_y = submenu_y + 5 + i * 40
@@ -249,15 +332,15 @@ class Toolbar:
                         if item_rect.collidepoint(pos):
                             self.hovered_subitem = value
                             return
-        
+
         # Vérifier les boutons de groupe
         x = 12
         for group_id, group_data in self.groups.items():
-            rect = pygame.Rect(x, toolbar_y + 6, 140, 36)
+            rect = pygame.Rect(x, toolbar_y + 2, 58, 44)
             if rect.collidepoint(pos):
                 self.hovered_button = group_id
                 break
-            x += 150
+            x += 65
     
     def handle_click(self, pos, screen_height):
         # Position toolbar en bas de l'écran
@@ -267,13 +350,13 @@ class Toolbar:
         if self.expanded_group and self.expanded_group in self.groups:
             group_data = self.groups[self.expanded_group]
             items = group_data['items']
-            
+
             if items:
                 group_index = list(self.groups.keys()).index(self.expanded_group)
-                submenu_x = 12 + group_index * 150
+                submenu_x = 12 + group_index * 65
                 submenu_y = toolbar_y - len(items) * 40 - 10
                 submenu_width = 200
-                
+
                 # Vérifier si le clic est dans le sous-menu
                 if (submenu_x <= pos[0] <= submenu_x + submenu_width and
                     submenu_y <= pos[1] <= submenu_y + len(items) * 40 + 10):
@@ -287,11 +370,13 @@ class Toolbar:
                                 self.active = value
                             self.expanded_group = None  # Fermer le sous-menu
                             return value
-        
+                    # Si on clique dans le sous-menu mais pas sur un item, ne rien faire
+                    return None
+
         # Vérifier les boutons de groupe
         x = 12
         for group_id, group_data in self.groups.items():
-            rect = pygame.Rect(x, toolbar_y + 6, 140, 36)
+            rect = pygame.Rect(x, toolbar_y + 2, 58, 44)
             if rect.collidepoint(pos):
                 # Ouvrir/fermer le sous-menu
                 if self.expanded_group == group_id:
@@ -299,7 +384,7 @@ class Toolbar:
                 else:
                     self.expanded_group = group_id  # Ouvrir
                 return group_id
-            x += 150
+            x += 65
         
         # Si clic ailleurs, fermer le sous-menu
         self.expanded_group = None

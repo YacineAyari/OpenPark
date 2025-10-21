@@ -28,7 +28,14 @@ class Game:
         pygame.init()
         self.screen = pygame.display.set_mode((1280, 800))
         pygame.display.set_caption('OpenPark — Oblique Mode')
-        self.clock = pygame.time.Clock(); self.font = pygame.font.SysFont('Arial', 16)
+        self.clock = pygame.time.Clock()
+
+        # Use standard font (no emojis to avoid size issues)
+        self.font = pygame.font.SysFont('Arial', 14)
+
+        # Load HUD icons (16x16px miniature sprites)
+        self.hud_icons = self._load_hud_icons()
+
         self.grid = MapGrid(64, 64); self.economy = Economy()
         self.queue_manager = SimpleQueueManager()
         self.litter_manager = LitterManager(self.grid)  # Add litter management system with grid reference
@@ -65,6 +72,12 @@ class Game:
         # Entrance fee configuration panel
         self.entrance_fee_panel_open = False
         self.entrance_fee_slider_dragging = False
+
+        # Save/Load dialog
+        self.save_load_dialog_open = False
+        self.save_load_mode = None  # 'save' or 'load'
+        self.save_name_input = ""
+        self.available_saves = []
         self.ride_placement_mode = None  # 'ride', 'entrance', 'exit'
         self.selected_ride = None
         self.employee_placement_mode = None
@@ -141,6 +154,46 @@ class Game:
                 self.spr_cache[cache_key] = base_sprite
 
         return self.spr_cache[cache_key]
+
+    def _load_hud_icons(self):
+        """Load and scale down OpenMoji sprites for HUD display (32x32px)"""
+        icon_size = (32, 32)
+        icons = {}
+
+        # Map icon names to sprite paths
+        icon_map = {
+            'money': '1FA99.png',  # Coin
+            'guest': 'guests/1F9D1.png',  # Person
+            'ride': 'rides/1F3A2.png',  # Roller coaster
+            'shop': 'shops/1F381.png',  # Gift
+            'calendar': '1F4C5.png',  # Calendar
+            'open': '2705.png',  # Check mark
+            'closed': '274C.png',  # Cross
+            'food': 'shops/1F354.png',  # Hamburger
+            'drink': 'shops/1F964.png',  # Soda
+            'restroom': 'infrastructure/1F6BB.png',  # WC
+            'engineer': 'employees/1F477.png',  # Engineer
+            'maintenance': 'employees/1F9F9.png',  # Broom
+            'security': 'employees/1F482.png',  # Guard
+            'mascot': 'employees/1F9F8.png',  # Teddy bear
+            'bin': 'infrastructure/1F5D1.png',  # Trash bin
+            'happy': '1F60A.png',  # Smiling face
+            'star': '2B50.png',  # Star
+        }
+
+        # Load and scale each icon
+        for name, path in icon_map.items():
+            try:
+                sprite = assets.load_image(path)
+                scaled = pygame.transform.smoothscale(sprite, icon_size)
+                icons[name] = scaled
+            except Exception as e:
+                # Create a colored square as fallback
+                fallback = pygame.Surface(icon_size, pygame.SRCALPHA)
+                fallback.fill((200, 50, 50))
+                icons[name] = fallback
+
+        return icons
 
     def _can_place_ride(self, ride_def, gx, gy):
         """Check if a ride can be placed at the given position"""
@@ -400,6 +453,21 @@ class Game:
         for e in pygame.event.get():
             if e.type==pygame.QUIT: return False, placing, hover
             if e.type==pygame.KEYDOWN:
+                # Handle text input for save/load dialog
+                if self.save_load_dialog_open and self.save_load_mode == 'save':
+                    if e.key == pygame.K_BACKSPACE:
+                        self.save_name_input = self.save_name_input[:-1]
+                    elif e.key == pygame.K_RETURN:
+                        if self.save_name_input:
+                            self.save_game(self.save_name_input)
+                            self._close_save_load_dialog()
+                    elif e.key == pygame.K_ESCAPE:
+                        self._close_save_load_dialog()
+                    elif len(self.save_name_input) < 30:  # Limit input length
+                        if e.unicode.isprintable() and e.unicode not in ['/', '\\', ':', '*', '?', '"', '<', '>', '|']:
+                            self.save_name_input += e.unicode
+                    continue
+
                 if e.key==pygame.K_ESCAPE: return False, placing, hover
                 elif e.key in (pygame.K_EQUALS, pygame.K_PLUS):
                     self.renderer.camera.set_zoom(self.renderer.camera.zoom+0.1)
@@ -495,8 +563,40 @@ class Game:
                     if e.button==2:
                         self.dragging=True; self.drag_start=e.pos; self.cam_start=(self.renderer.camera.x, self.renderer.camera.y)
                     elif e.button==1:
-                        # Handle entrance fee panel interactions first (modal priority)
-                        if self.entrance_fee_panel_open:
+                        # Handle save/load dialog interactions first (highest modal priority)
+                        if self.save_load_dialog_open:
+                            if hasattr(self, 'save_load_dialog_rect'):
+                                # Check if clicking outside dialog
+                                if not self.save_load_dialog_rect.collidepoint(e.pos):
+                                    self._close_save_load_dialog()
+                                    continue
+
+                                # Check if clicking on close button
+                                if hasattr(self, 'save_load_close_button_rect') and self.save_load_close_button_rect.collidepoint(e.pos):
+                                    self._close_save_load_dialog()
+                                    continue
+
+                                # Check if clicking on confirm button
+                                if hasattr(self, 'save_load_confirm_button_rect') and self.save_load_confirm_button_rect and self.save_load_confirm_button_rect.collidepoint(e.pos):
+                                    if self.save_load_mode == 'save' and self.save_name_input:
+                                        self.save_game(self.save_name_input)
+                                        self._close_save_load_dialog()
+                                    elif self.save_load_mode == 'load' and self.save_name_input:
+                                        if self.load_game(self.save_name_input):
+                                            self._close_save_load_dialog()
+                                    continue
+
+                                # Check if clicking on a save file in the list (load mode only)
+                                if self.save_load_mode == 'load' and hasattr(self, 'save_file_rects'):
+                                    for save_name, rect in self.save_file_rects:
+                                        if rect.collidepoint(e.pos):
+                                            self.save_name_input = save_name
+                                            break
+                                    continue
+                            continue
+
+                        # Handle entrance fee panel interactions (modal priority)
+                        elif self.entrance_fee_panel_open:
                             # Check if clicking on close button
                             if hasattr(self, 'entrance_fee_close_button_rect') and self.entrance_fee_close_button_rect.collidepoint(e.pos):
                                 self.entrance_fee_panel_open = False
@@ -533,7 +633,13 @@ class Game:
                                 self.debug_menu.toggle()
                             elif clicked=='entrance_fee_config':
                                 self.entrance_fee_panel_open = not self.entrance_fee_panel_open
-                            elif clicked and clicked not in ['paths', 'rides', 'shops', 'employees', 'tools', 'bins']: 
+                            elif clicked=='save_game':
+                                self._open_save_dialog()
+                            elif clicked=='load_game':
+                                self._open_load_dialog()
+                            elif clicked=='quit_game':
+                                return False, placing, hover
+                            elif clicked and clicked not in ['paths', 'rides', 'shops', 'employees', 'tools', 'facilities', 'economy']: 
                                 placing=self.toolbar.active
                                 # Reset placement modes when selecting a new tool
                                 if not placing.startswith('ride_'):
@@ -1221,17 +1327,47 @@ class Game:
             
             if items:
                 group_index = list(self.toolbar.groups.keys()).index(self.toolbar.expanded_group)
-                submenu_x = 12 + group_index * 150
+                submenu_x = 12 + group_index * 65
                 submenu_y = toolbar_y - len(items) * 40 - 10
                 submenu_width = 200
                 submenu_height = len(items) * 40 + 10
-                
+
                 # Vérifier si la position est dans le sous-menu
-                if (submenu_x <= pos[0] <= submenu_x + submenu_width and 
+                if (submenu_x <= pos[0] <= submenu_x + submenu_width and
                     submenu_y <= pos[1] <= submenu_y + submenu_height):
                     return True
         
         return False
+
+    def _open_save_dialog(self):
+        """Ouvrir le dialogue de sauvegarde"""
+        import time
+        self.save_load_dialog_open = True
+        self.save_load_mode = 'save'
+        # Use timestamp for default save name
+        timestamp = int(time.time())
+        self.save_name_input = f"save_{timestamp}"
+
+    def _open_load_dialog(self):
+        """Ouvrir le dialogue de chargement"""
+        import os
+        self.save_load_dialog_open = True
+        self.save_load_mode = 'load'
+        self.save_name_input = ""
+
+        # Get list of available saves
+        saves_dir = 'saves'
+        if os.path.exists(saves_dir):
+            self.available_saves = [f.replace('.json', '') for f in os.listdir(saves_dir) if f.endswith('.json')]
+        else:
+            self.available_saves = []
+
+    def _close_save_load_dialog(self):
+        """Fermer le dialogue de sauvegarde/chargement"""
+        self.save_load_dialog_open = False
+        self.save_load_mode = None
+        self.save_name_input = ""
+        self.available_saves = []
 
     def _can_place_shop(self, shop_def, x, y):
         """Vérifier si un shop peut être placé à la position donnée"""
@@ -1689,6 +1825,127 @@ class Game:
         self.screen.blit(close_text, close_text_rect)
         self.entrance_fee_close_button_rect = close_button_rect
 
+    def _draw_save_load_dialog(self):
+        """Draw save/load dialog"""
+        if not self.save_load_dialog_open:
+            return
+
+        # Panel dimensions and position (centered on screen)
+        panel_width = 500
+        panel_height = 400
+        panel_x = (self.screen.get_width() - panel_width) // 2
+        panel_y = (self.screen.get_height() - panel_height) // 2
+
+        # Semi-transparent background overlay
+        overlay = pygame.Surface((self.screen.get_width(), self.screen.get_height()), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 150))
+        self.screen.blit(overlay, (0, 0))
+
+        # Panel background
+        panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
+        self.save_load_dialog_rect = panel_rect
+        pygame.draw.rect(self.screen, (40, 40, 50), panel_rect)
+        pygame.draw.rect(self.screen, (100, 150, 200), panel_rect, 3)
+
+        # Title
+        title_text = "Sauvegarder la partie" if self.save_load_mode == 'save' else "Charger une partie"
+        title_surf = self.font.render(title_text, True, (255, 255, 255))
+        title_rect = title_surf.get_rect(center=(panel_x + panel_width // 2, panel_y + 30))
+        self.screen.blit(title_surf, title_rect)
+
+        # Save mode: text input for save name
+        if self.save_load_mode == 'save':
+            # Input label
+            label_text = "Nom de la sauvegarde:"
+            label_surf = self.font.render(label_text, True, (200, 200, 200))
+            self.screen.blit(label_surf, (panel_x + 20, panel_y + 70))
+
+            # Input box
+            input_box_rect = pygame.Rect(panel_x + 20, panel_y + 100, panel_width - 40, 40)
+            pygame.draw.rect(self.screen, (60, 60, 70), input_box_rect)
+            pygame.draw.rect(self.screen, (150, 150, 160), input_box_rect, 2)
+
+            # Input text with cursor
+            input_text = self.save_name_input + "|"
+            input_surf = self.font.render(input_text, True, (255, 255, 255))
+            self.screen.blit(input_surf, (panel_x + 30, panel_y + 110))
+
+            # Instructions
+            instr_text = "Appuyez sur ENTRÉE pour sauvegarder, ÉCHAP pour annuler"
+            instr_surf = pygame.font.SysFont('Arial', 12).render(instr_text, True, (180, 180, 180))
+            self.screen.blit(instr_surf, (panel_x + 20, panel_y + 150))
+
+        # Load mode: list of available saves
+        else:
+            # List label
+            label_text = f"Sauvegardes disponibles ({len(self.available_saves)}):"
+            label_surf = self.font.render(label_text, True, (200, 200, 200))
+            self.screen.blit(label_surf, (panel_x + 20, panel_y + 70))
+
+            # Save file list
+            self.save_file_rects = []
+            list_y = panel_y + 100
+            max_visible = 8
+
+            if not self.available_saves:
+                no_saves_text = "Aucune sauvegarde trouvée"
+                no_saves_surf = self.font.render(no_saves_text, True, (150, 150, 150))
+                self.screen.blit(no_saves_surf, (panel_x + 30, list_y))
+            else:
+                for i, save_name in enumerate(self.available_saves[:max_visible]):
+                    item_rect = pygame.Rect(panel_x + 20, list_y + i * 35, panel_width - 40, 30)
+
+                    # Highlight selected save
+                    is_selected = (save_name == self.save_name_input)
+                    bg_color = (80, 100, 120) if is_selected else (60, 60, 70)
+                    border_color = (150, 200, 255) if is_selected else (100, 100, 110)
+
+                    pygame.draw.rect(self.screen, bg_color, item_rect)
+                    pygame.draw.rect(self.screen, border_color, item_rect, 2)
+
+                    # Save name text
+                    save_text = self.font.render(save_name, True, (255, 255, 255))
+                    self.screen.blit(save_text, (panel_x + 30, list_y + i * 35 + 5))
+
+                    self.save_file_rects.append((save_name, item_rect))
+
+        # Buttons
+        button_width = 120
+        button_height = 40
+        button_y = panel_y + panel_height - 60
+
+        # Confirm button
+        confirm_x = panel_x + panel_width // 2 - button_width - 10
+        confirm_rect = pygame.Rect(confirm_x, button_y, button_width, button_height)
+        confirm_enabled = bool(self.save_name_input)
+        confirm_color = (60, 120, 60) if confirm_enabled else (60, 60, 60)
+        pygame.draw.rect(self.screen, confirm_color, confirm_rect)
+        pygame.draw.rect(self.screen, (100, 200, 100) if confirm_enabled else (100, 100, 100), confirm_rect, 2)
+
+        confirm_text_str = "Sauvegarder" if self.save_load_mode == 'save' else "Charger"
+        confirm_text = self.font.render(confirm_text_str, True, (255, 255, 255) if confirm_enabled else (150, 150, 150))
+        confirm_text_rect = confirm_text.get_rect(center=confirm_rect.center)
+        self.screen.blit(confirm_text, confirm_text_rect)
+        self.save_load_confirm_button_rect = confirm_rect if confirm_enabled else None
+
+        # Cancel button
+        cancel_x = panel_x + panel_width // 2 + 10
+        cancel_rect = pygame.Rect(cancel_x, button_y, button_width, button_height)
+        pygame.draw.rect(self.screen, (120, 60, 60), cancel_rect)
+        pygame.draw.rect(self.screen, (200, 100, 100), cancel_rect, 2)
+
+        cancel_text = self.font.render("Annuler", True, (255, 255, 255))
+        cancel_text_rect = cancel_text.get_rect(center=cancel_rect.center)
+        self.screen.blit(cancel_text, cancel_text_rect)
+        self.save_load_close_button_rect = cancel_rect
+
+    def _draw_hud_icon(self, icon_name, x, y, tooltip_text):
+        """Draw a HUD icon and register its tooltip"""
+        self.screen.blit(self.hud_icons[icon_name], (x, y))
+        icon_rect = pygame.Rect(x, y, 32, 32)
+        self.hud_icon_rects.append((icon_rect, tooltip_text))
+        return icon_rect
+
     def _draw_top_hud_bar(self, num_guests, avg_happiness, avg_satisfaction, avg_excitement,
                           avg_hunger, avg_thirst, avg_bladder,
                           num_food_shops, num_drink_shops, num_restrooms,
@@ -1697,10 +1954,13 @@ class Game:
         """Draw compact horizontal HUD bar at top of screen with emojis"""
 
         # Background bar
-        hud_height = 50
+        hud_height = 70
         hud_bg = pygame.Surface((self.screen.get_width(), hud_height), pygame.SRCALPHA)
         hud_bg.fill((20, 20, 20, 220))  # Semi-transparent dark background
         self.screen.blit(hud_bg, (0, 0))
+
+        # Track icon positions for tooltips
+        self.hud_icon_rects = []
 
         # Colors for status indicators
         park_status_color = (100, 255, 100) if self.park_open else (255, 100, 100)
@@ -1712,132 +1972,223 @@ class Game:
 
         # Line 1: Main info (money, guests, rides, shops, time)
         x_offset = 10
-        y = 8
+        y = 22
+        icon_y = 6  # Icons start at 6px from top (32px icon + 6px top = 38px, leaving 32px for line 2)
 
         # Money
-        money_text = f"💰 ${self.economy.cash}"
+        self._draw_hud_icon('money', x_offset, icon_y, "Cash - Your park's money")
+        x_offset += 34
+        money_text = f"${self.economy.cash}"
         self.screen.blit(self.font.render(money_text, True, (255, 220, 100)), (x_offset, y))
-        x_offset += 120
+        x_offset += 90
 
         # Guests
-        guests_text = f"🧑 {num_guests}"
+        self._draw_hud_icon('guest', x_offset, icon_y, "Guests - Visitors in your park")
+        x_offset += 34
+        guests_text = f"{num_guests}"
         self.screen.blit(self.font.render(guests_text, True, (200, 220, 255)), (x_offset, y))
-        x_offset += 70
+        x_offset += 35
 
         # Rides
-        rides_text = f"🎢 {len(self.rides)}"
+        self._draw_hud_icon('ride', x_offset, icon_y, "Rides - Total attractions")
+        x_offset += 34
+        rides_text = f"{len(self.rides)}"
         self.screen.blit(self.font.render(rides_text, True, (255, 180, 255)), (x_offset, y))
-        x_offset += 60
+        x_offset += 25
 
         # Shops
-        shops_text = f"🏪 {len(self.shops)}"
+        self._draw_hud_icon('shop', x_offset, icon_y, "Shops - Food & gift shops")
+        x_offset += 34
+        shops_text = f"{len(self.shops)}"
         self.screen.blit(self.font.render(shops_text, True, (200, 255, 200)), (x_offset, y))
-        x_offset += 70
+        x_offset += 35
 
         # Separator
         self.screen.blit(self.font.render("|", True, (100, 100, 100)), (x_offset, y))
         x_offset += 15
 
         # Time
-        time_text = f"📅 D{self.game_day} {self.game_hour:02d}:{self.game_minute:02d}"
+        self._draw_hud_icon('calendar', x_offset, icon_y, "Time - Current day and time")
+        x_offset += 34
+        time_text = f"D{self.game_day} {self.game_hour:02d}:{self.game_minute:02d}"
         self.screen.blit(self.font.render(time_text, True, (200, 220, 255)), (x_offset, y))
-        x_offset += 120
+        x_offset += 95
 
         # Park status
-        park_emoji = "🟢" if self.park_open else "🔴"
-        self.screen.blit(self.font.render(park_emoji, True, park_status_color), (x_offset, y))
-        x_offset += 25
+        park_icon_name = 'open' if self.park_open else 'closed'
+        park_status_text = "Park Status - Open" if self.park_open else "Park Status - Closed"
+        self._draw_hud_icon(park_icon_name, x_offset, icon_y, park_status_text)
+        x_offset += 36
 
         # Speed
-        speed_text = "⏸" if self.game_speed == 0 else f"⏩x{int(self.game_speed)}"
+        speed_text = "PAUSE" if self.game_speed == 0 else f"x{int(self.game_speed)}"
         self.screen.blit(self.font.render(speed_text, True, speed_color), (x_offset, y))
-        x_offset += 60
+        x_offset += 50
 
         # Separator
         self.screen.blit(self.font.render("|", True, (100, 100, 100)), (x_offset, y))
         x_offset += 15
 
         # Guest needs
-        hunger_text = f"🍔{avg_hunger*100:.0f}%"
+        self._draw_hud_icon('food', x_offset, icon_y, "Hunger - Average guest hunger level")
+        x_offset += 34
+        hunger_text = f"{avg_hunger*100:.0f}%"
         self.screen.blit(self.font.render(hunger_text, True, hunger_color), (x_offset, y))
-        x_offset += 80
+        x_offset += 45
 
-        thirst_text = f"🥤{avg_thirst*100:.0f}%"
+        self._draw_hud_icon('drink', x_offset, icon_y, "Thirst - Average guest thirst level")
+        x_offset += 34
+        thirst_text = f"{avg_thirst*100:.0f}%"
         self.screen.blit(self.font.render(thirst_text, True, thirst_color), (x_offset, y))
-        x_offset += 80
+        x_offset += 45
 
-        bladder_text = f"🚻{avg_bladder*100:.0f}%"
+        self._draw_hud_icon('restroom', x_offset, icon_y, "Bladder - Average guest bladder level")
+        x_offset += 34
+        bladder_text = f"{avg_bladder*100:.0f}%"
         self.screen.blit(self.font.render(bladder_text, True, bladder_color), (x_offset, y))
-        x_offset += 80
+        x_offset += 50
 
         # Separator
         self.screen.blit(self.font.render("|", True, (100, 100, 100)), (x_offset, y))
         x_offset += 15
 
         # Employees
-        employees_text = f"👷{num_engineers} 🧹{num_maintenance} 💂{num_security} 🧸{num_mascots}"
-        self.screen.blit(self.font.render(employees_text, True, (180, 220, 255)), (x_offset, y))
-        x_offset += 150
+        self._draw_hud_icon('engineer', x_offset, icon_y, "Engineers - Fix broken rides")
+        x_offset += 34
+        self.screen.blit(self.font.render(f"{num_engineers}", True, (180, 220, 255)), (x_offset, y))
+        x_offset += 25
+
+        self._draw_hud_icon('maintenance', x_offset, icon_y, "Maintenance - Clean litter")
+        x_offset += 34
+        self.screen.blit(self.font.render(f"{num_maintenance}", True, (180, 220, 255)), (x_offset, y))
+        x_offset += 25
+
+        self._draw_hud_icon('security', x_offset, icon_y, "Security - Guard the park")
+        x_offset += 34
+        self.screen.blit(self.font.render(f"{num_security}", True, (180, 220, 255)), (x_offset, y))
+        x_offset += 25
+
+        self._draw_hud_icon('mascot', x_offset, icon_y, "Mascots - Entertain guests")
+        x_offset += 34
+        self.screen.blit(self.font.render(f"{num_mascots}", True, (180, 220, 255)), (x_offset, y))
+        x_offset += 30
 
         # Separator
         self.screen.blit(self.font.render("|", True, (100, 100, 100)), (x_offset, y))
         x_offset += 15
 
         # Litter and bins
-        litter_text = f"🗑{num_litter}/{num_bins}"
+        self._draw_hud_icon('bin', x_offset, icon_y, "Litter/Bins - Trash management")
+        x_offset += 34
+        litter_text = f"{num_litter}/{num_bins}"
         self.screen.blit(self.font.render(litter_text, True, litter_color), (x_offset, y))
-        x_offset += 80
+        x_offset += 55
 
         # Line 2: Secondary info (happiness, entrance fee, controls)
-        y = 28
+        y = 48
         x_offset = 10
+        icon_y = 40  # Icons start at 40px from top (6px top + 32px line1 + 2px gap)
 
         # Happiness
         happiness_color = self._get_satisfaction_color(avg_happiness)
-        happiness_text = f"😊{avg_happiness*100:.0f}%"
+        self._draw_hud_icon('happy', x_offset, icon_y, "Happiness - Guest happiness level")
+        x_offset += 34
+        happiness_text = f"{avg_happiness*100:.0f}%"
         self.screen.blit(self.font.render(happiness_text, True, happiness_color), (x_offset, y))
-        x_offset += 80
+        x_offset += 50
 
         # Satisfaction
         satisfaction_color = self._get_satisfaction_color(avg_satisfaction)
-        satisfaction_text = f"⭐{avg_satisfaction*100:.0f}%"
+        self._draw_hud_icon('star', x_offset, icon_y, "Satisfaction - Overall rating")
+        x_offset += 34
+        satisfaction_text = f"{avg_satisfaction*100:.0f}%"
         self.screen.blit(self.font.render(satisfaction_text, True, satisfaction_color), (x_offset, y))
-        x_offset += 80
+        x_offset += 50
 
         # Separator
         self.screen.blit(self.font.render("|", True, (100, 100, 100)), (x_offset, y))
         x_offset += 15
 
         # Entrance fee and revenue
-        fee_text = f"🎫${self.economy.park_entrance_fee} 💵${self.economy.entrance_revenue}"
+        self._draw_hud_icon('money', x_offset, icon_y, "Entrance Fee / Revenue")
+        x_offset += 34
+        fee_text = f"${self.economy.park_entrance_fee} / ${self.economy.entrance_revenue}"
         self.screen.blit(self.font.render(fee_text, True, (200, 255, 200)), (x_offset, y))
-        x_offset += 180
-
-        # Separator
-        self.screen.blit(self.font.render("|", True, (100, 100, 100)), (x_offset, y))
-        x_offset += 15
-
-        # Facilities count
-        facilities_text = f"🍔{num_food_shops} 🥤{num_drink_shops} 🚻{num_restrooms}"
-        self.screen.blit(self.font.render(facilities_text, True, (180, 220, 255)), (x_offset, y))
         x_offset += 120
 
         # Separator
         self.screen.blit(self.font.render("|", True, (100, 100, 100)), (x_offset, y))
         x_offset += 15
 
+        # Facilities count
+        self._draw_hud_icon('food', x_offset, icon_y, "Food Shops - Total food shops")
+        x_offset += 34
+        self.screen.blit(self.font.render(f"{num_food_shops}", True, (180, 220, 255)), (x_offset, y))
+        x_offset += 25
+
+        self._draw_hud_icon('drink', x_offset, icon_y, "Drink Shops - Total drink shops")
+        x_offset += 34
+        self.screen.blit(self.font.render(f"{num_drink_shops}", True, (180, 220, 255)), (x_offset, y))
+        x_offset += 25
+
+        self._draw_hud_icon('restroom', x_offset, icon_y, "Restrooms - Total restrooms")
+        x_offset += 34
+        self.screen.blit(self.font.render(f"{num_restrooms}", True, (180, 220, 255)), (x_offset, y))
+        x_offset += 30
+
+        # Separator
+        self.screen.blit(self.font.render("|", True, (100, 100, 100)), (x_offset, y))
+        x_offset += 15
+
         # Queue status
-        queue_text = f"🎫{connected_queues}/{total_queues}"
+        self._draw_hud_icon('ride', x_offset, icon_y, "Queues - Connected/Total queues")
+        x_offset += 34
+        queue_text = f"{connected_queues}/{total_queues}"
         self.screen.blit(self.font.render(queue_text, True, (180, 220, 255)), (x_offset, y))
-        x_offset += 80
+        x_offset += 45
 
         # Separator
         self.screen.blit(self.font.render("|", True, (100, 100, 100)), (x_offset, y))
         x_offset += 15
 
         # Save/Load controls (right side)
-        controls_text = "F5💾 F9📂"
+        controls_text = "F5:Save F9:Load"
         self.screen.blit(self.font.render(controls_text, True, (200, 200, 255)), (x_offset, y))
+
+    def _draw_hud_tooltip(self):
+        """Draw tooltip for HUD icons when mouse hovers over them"""
+        mouse_pos = pygame.mouse.get_pos()
+
+        for icon_rect, tooltip_text in self.hud_icon_rects:
+            if icon_rect.collidepoint(mouse_pos):
+                # Draw tooltip background
+                tooltip_font = pygame.font.SysFont('Arial', 12)
+                tooltip_surface = tooltip_font.render(tooltip_text, True, (255, 255, 255))
+                tooltip_width = tooltip_surface.get_width() + 10
+                tooltip_height = tooltip_surface.get_height() + 6
+
+                # Position tooltip below the icon
+                tooltip_x = icon_rect.centerx - tooltip_width // 2
+                tooltip_y = icon_rect.bottom + 5
+
+                # Ensure tooltip stays on screen
+                if tooltip_x + tooltip_width > self.screen.get_width():
+                    tooltip_x = self.screen.get_width() - tooltip_width - 5
+                if tooltip_x < 5:
+                    tooltip_x = 5
+
+                # Draw background
+                tooltip_bg = pygame.Surface((tooltip_width, tooltip_height), pygame.SRCALPHA)
+                tooltip_bg.fill((40, 40, 40, 240))
+                self.screen.blit(tooltip_bg, (tooltip_x, tooltip_y))
+
+                # Draw border
+                pygame.draw.rect(self.screen, (200, 200, 200),
+                               (tooltip_x, tooltip_y, tooltip_width, tooltip_height), 1)
+
+                # Draw text
+                self.screen.blit(tooltip_surface, (tooltip_x + 5, tooltip_y + 3))
+                break  # Only show one tooltip at a time
 
     def draw(self, hover=None):
         self.screen.fill((20,60,90))
@@ -2165,8 +2516,14 @@ class Game:
             num_litter, num_bins, connected_queues, total_queues
         )
 
+        # Draw HUD tooltips (on hover)
+        self._draw_hud_tooltip()
+
         # Draw entrance fee panel (modal, on top of everything)
         self._draw_entrance_fee_panel()
+
+        # Draw save/load dialog (highest priority modal)
+        self._draw_save_load_dialog()
 
         pygame.display.flip()
 
