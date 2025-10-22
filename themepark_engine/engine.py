@@ -1401,10 +1401,6 @@ class Game:
         """Vérifier si un shop peut être placé à la position donnée"""
         width, height = shop_def.size
 
-        # Enforce 3x3 minimum size
-        if width < 3 or height < 3:
-            return False
-
         # Vérifier que toutes les tuiles sont dans les limites et libres
         for dx in range(width):
             for dy in range(height):
@@ -2291,7 +2287,11 @@ class Game:
 
         # Render decorations (simple 1x1 sprites)
         for d in self.decorations:
-            objs.append((self.sprite(d.defn.sprite),(d.x,d.y)))
+            sprite = self.sprite(d.defn.sprite)
+            # Scale down flowers to 50% for better visual coherence with trees
+            if 'sunflower' in d.defn.id or 'hibiscus' in d.defn.id:
+                sprite = pygame.transform.smoothscale(sprite, (int(sprite.get_width() * 0.5), int(sprite.get_height() * 0.5)))
+            objs.append((sprite,(d.x,d.y)))
 
         # Render guests with satisfaction indicators
         for g in self.guests:
