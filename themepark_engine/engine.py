@@ -18,6 +18,7 @@ from .queue_v2 import QueueManagerV2
 from .serpent_queue import SerpentQueueManager, Direction, Movement, MovementType
 from .debug import DebugConfig
 from .litter import LitterManager, BinDef, DEFAULT_BIN, Litter
+from .salary_negotiation import SalaryNegotiationManager
 from .save_load import (SaveLoadManager, serialize_grid, serialize_ride, serialize_shop,
                          serialize_employee, serialize_guest, serialize_bin, serialize_litter,
                          serialize_restroom)
@@ -40,6 +41,7 @@ class Game:
         self.grid = MapGrid(64, 64); self.economy = Economy()
         self.queue_manager = QueueManagerV2()
         self.litter_manager = LitterManager(self.grid)  # Add litter management system with grid reference
+        self.salary_negotiation_manager = SalaryNegotiationManager()  # Salary negotiation system
         self.save_load_manager = SaveLoadManager()  # Save/Load system
         data = json.load(open(DATA/'objects.json','r'))
         self.ride_defs = {r['id']: RideDef(**r) for r in data.get('rides', [])}
@@ -1276,9 +1278,17 @@ class Game:
 
         # Assign engineers to broken rides
         self._assign_engineers_to_broken_rides()
-        
+
         # Handle broken rides - evacuate queues
         self._handle_broken_rides()
+
+        # Check for salary negotiations (once per day)
+        if hasattr(self, '_last_negotiation_check_day'):
+            if self.game_day != self._last_negotiation_check_day:
+                self._check_and_trigger_salary_negotiations()
+                self._last_negotiation_check_day = self.game_day
+        else:
+            self._last_negotiation_check_day = self.game_day
         
         # Debug: Check for stuck visitors in rides
         for ride in self.rides:
@@ -2779,6 +2789,48 @@ class Game:
                     # Also small happiness boost (+3%)
                     guest.happiness = min(1.0, guest.happiness + 0.03)
                 DebugConfig.log('engine', f"Mascot {mascot.id} boosted excitement for {len(mascot.nearby_guests)} guests")
+
+    def _check_and_trigger_salary_negotiations(self):
+        """Check if any employee type should start salary negotiations"""
+        # Calculate current year (360 days per year)
+        current_year = (self.game_day // 360) + 1
+
+        # Calculate park profit (simple: recent income - expenses)
+        park_profit = self.economy.cash - 10000  # Rough estimate based on starting cash
+
+        # Check each employee type
+        for employee_type in ['engineer', 'maintenance', 'security', 'mascot']:
+            # Get employees of this type
+            employees_of_type = [emp for emp in self.employees if emp.defn.type == employee_type]
+
+            if not employees_of_type:
+                continue  # No employees of this type
+
+            # Check if we should trigger negotiation
+            should_trigger = self.salary_negotiation_manager.should_trigger_negotiation(
+                employee_type,
+                self.game_day,
+                current_year,
+                park_profit
+            )
+
+            if should_trigger:
+                # Get IDs of affected employees (those currently employed)
+                affected_ids = [id(emp) for emp in employees_of_type]
+                current_salary = employees_of_type[0].defn.salary
+
+                # Start negotiation
+                negotiation = self.salary_negotiation_manager.start_negotiation(
+                    employee_type,
+                    affected_ids,
+                    current_salary,
+                    current_year,
+                    self.game_day
+                )
+
+                DebugConfig.log('engine', f"Started salary negotiation for {employee_type}s: ${negotiation.current_salary} -> ${negotiation.demanded_salary}")
+
+                # TODO: Show notification to player
 
     def _apply_litter_proximity_penalties(self):
         """Apply satisfaction penalties to guests near litter"""
