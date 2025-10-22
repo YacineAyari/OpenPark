@@ -48,6 +48,7 @@ class Engineer(Employee):
         self.move_progress = 0.0
         self.target_x = None
         self.target_y = None
+        self.salary_negotiation_manager = None  # Set by engine
         
     def can_repair(self, ride) -> bool:
         """Vérifier si l'ingénieur peut réparer cette attraction"""
@@ -88,21 +89,38 @@ class Engineer(Employee):
     def tick(self, dt: float):
         """Mise à jour de l'ingénieur"""
         self.salary_timer += dt
-        
+
+        # Check for negotiation penalty
+        efficiency_penalty = 0.0
+        if self.salary_negotiation_manager:
+            efficiency_penalty = self.salary_negotiation_manager.get_efficiency_penalty('engineer', self.id)
+
+            # If on strike (100% penalty), don't work at all
+            if efficiency_penalty >= 1.0:
+                if self.state == "working":
+                    self.state = "idle"
+                    if self.target_object:
+                        self.target_object.being_repaired = False
+                        self.target_object = None
+                    DebugConfig.log('employees', f"Engineer {self.id} on strike, stopped working")
+                return
+
         if self.state == "moving_to_ride":
             self._update_movement(dt)
         elif self.state == "moving_to_nearby":
             self._update_movement_to_nearby(dt)
         elif self.state == "working" and self.target_object:
-            self.repair_timer += dt
+            # Apply efficiency penalty to repair speed
+            effective_dt = dt * (1.0 - efficiency_penalty)
+            self.repair_timer += effective_dt
             if self.repair_timer >= self.repair_duration:
                 # Réparation terminée
                 self.target_object.is_broken = False
                 self.target_object.being_repaired = False
-                
+
                 # Move engineer to a nearby position and wait
                 self._start_move_to_nearby_position()
-                
+
                 self.target_object = None
                 self.repair_timer = 0.0
                 DebugConfig.log('employees', f"Engineer {self.id} finished repair and moved to nearby position")
@@ -259,6 +277,7 @@ class MaintenanceWorker(Employee):
         self.lawn_mowing_direction = 1  # 1 = right/down, -1 = left/up
         self.lawn_mowing_row = 0  # Current row/column in pattern
         self.mowing_speed = 0.3  # Duration to mow one tile (seconds)
+        self.salary_negotiation_manager = None  # Set by engine
 
     def get_render_position(self):
         """Get the position to render the worker (interpolated during movement)"""
@@ -570,6 +589,20 @@ class MaintenanceWorker(Employee):
         """Mise à jour de l'employé de maintenance"""
         self.salary_timer += dt
 
+        # Check for negotiation penalty
+        efficiency_penalty = 0.0
+        if self.salary_negotiation_manager:
+            efficiency_penalty = self.salary_negotiation_manager.get_efficiency_penalty('maintenance', self.id)
+
+            # If on strike (100% penalty), don't work at all
+            if efficiency_penalty >= 1.0:
+                if self.state in ["cleaning", "gardening", "mowing", "moving_to_litter", "moving_to_garden"]:
+                    self.state = "idle"
+                    self.target_litter = None
+                    self.target_garden_spot = None
+                    DebugConfig.log('employees', f"Maintenance worker {self.id} on strike, stopped working")
+                return
+
         if self.state == "idle":
             # Idle: look for work or start patrol
             self.patrol_timer += dt
@@ -586,7 +619,9 @@ class MaintenanceWorker(Employee):
             self._update_movement_to_garden(dt)
 
         elif self.state == "cleaning":
-            self.cleaning_timer += dt
+            # Apply efficiency penalty to cleaning speed
+            effective_dt = dt * (1.0 - efficiency_penalty)
+            self.cleaning_timer += effective_dt
             if self.cleaning_timer >= self.cleaning_duration:
                 # Cleaning finished
                 DebugConfig.log('employees', f"Maintenance worker {self.id} finished cleaning, going idle, patrol_timer: {self.patrol_timer:.2f}")
@@ -596,7 +631,9 @@ class MaintenanceWorker(Employee):
                 # DO NOT reset patrol_timer - it should stay at 0.0 to trigger immediate reassignment
 
         elif self.state == "gardening":
-            self.gardening_timer += dt
+            # Apply efficiency penalty to gardening speed
+            effective_dt = dt * (1.0 - efficiency_penalty)
+            self.gardening_timer += effective_dt
             if self.gardening_timer >= self.gardening_duration:
                 self.state = "idle"
                 self.gardening_timer = 0.0
@@ -604,7 +641,9 @@ class MaintenanceWorker(Employee):
                 DebugConfig.log('employees', f"Maintenance worker {self.id} finished gardening")
 
         elif self.state == "mowing":
-            self._update_mowing(dt)
+            # Apply efficiency penalty to mowing
+            effective_dt = dt * (1.0 - efficiency_penalty)
+            self._update_mowing(effective_dt)
     
     def _update_movement_to_litter(self, dt: float):
         """Mise à jour du mouvement vers un détritus"""
@@ -716,6 +755,7 @@ class SecurityGuard(Employee):
         self.speed = 2.0  # Vitesse de déplacement
         self.move_duration = 0.5  # Durée pour se déplacer d'une tuile
         self.nearby_guests = []  # Liste des visiteurs à proximité
+        self.salary_negotiation_manager = None  # Set by engine
 
     def start_patrol(self, grid):
         """Commencer une patrouille sur les chemins"""
@@ -777,11 +817,26 @@ class SecurityGuard(Employee):
         """Mise à jour du gardien"""
         self.salary_timer += dt
 
+        # Check for negotiation penalty
+        efficiency_penalty = 0.0
+        if self.salary_negotiation_manager:
+            efficiency_penalty = self.salary_negotiation_manager.get_efficiency_penalty('security', self.id)
+
+            # If on strike (100% penalty), don't work at all
+            if efficiency_penalty >= 1.0:
+                if self.state == "patrolling":
+                    self.state = "idle"
+                    self.path = []
+                    DebugConfig.log('employees', f"Security guard {self.id} on strike, stopped patrolling")
+                return
+
         if self.state == "idle":
             # Idle: increment patrol timer
             self.patrol_timer += dt
 
         elif self.state == "patrolling":
+            # Security effectiveness is reduced by penalty, but movement continues
+            # (Penalty affects their ability to provide security, not their movement)
             self._update_patrol_movement(dt)
 
     def _update_patrol_movement(self, dt: float):
@@ -831,6 +886,7 @@ class Mascot(Employee):
         self.target_hotspot = None  # Position de la foule cible
         self.search_timer = 0.0
         self.search_duration = 0.0  # Pas de délai - recherche continue
+        self.salary_negotiation_manager = None  # Set by engine
 
     def find_best_crowd_location(self, guests, queue_manager):
         """Trouver le meilleur endroit avec des visiteurs (priorise les files d'attente)"""
@@ -978,6 +1034,20 @@ class Mascot(Employee):
         """Mise à jour de la mascotte"""
         self.salary_timer += dt
 
+        # Check for negotiation penalty
+        efficiency_penalty = 0.0
+        if self.salary_negotiation_manager:
+            efficiency_penalty = self.salary_negotiation_manager.get_efficiency_penalty('mascot', self.id)
+
+            # If on strike (100% penalty), don't work at all
+            if efficiency_penalty >= 1.0:
+                if self.state in ["entertaining", "moving_to_crowd"]:
+                    self.state = "idle"
+                    self.path = []
+                    self.target_hotspot = None
+                    DebugConfig.log('employees', f"Mascot {self.id} on strike, stopped entertaining")
+                return
+
         if self.state == "idle":
             self.search_timer += dt
             # Log only once per second to avoid spam
@@ -988,7 +1058,10 @@ class Mascot(Employee):
             self._update_movement_to_crowd(dt)
 
         elif self.state == "entertaining":
-            self.entertainment_timer += dt
+            # Mascot entertainment effectiveness is reduced by penalty
+            # This affects how much boost guests receive
+            effective_dt = dt * (1.0 - efficiency_penalty)
+            self.entertainment_timer += effective_dt
             if self.entertainment_timer >= self.entertainment_duration:
                 # Animation terminée, chercher une nouvelle foule
                 DebugConfig.log('employees', f"Mascot {self.id} finished entertaining")

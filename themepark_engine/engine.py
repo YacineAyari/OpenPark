@@ -806,7 +806,10 @@ class Game:
                                                 employee = Mascot(employee_def, gx, gy)
                                             else:
                                                 continue
-                                            
+
+                                            # Set negotiation manager reference
+                                            employee.salary_negotiation_manager = self.salary_negotiation_manager
+
                                             self.employees.append(employee)
                                             self.economy.add_expense(employee_def.salary)  # Pay first hour
                                             DebugConfig.log('engine', f"Placed {employee_def.name} at ({gx}, {gy})")
@@ -2791,9 +2794,12 @@ class Game:
                 DebugConfig.log('engine', f"Mascot {mascot.id} boosted excitement for {len(mascot.nearby_guests)} guests")
 
     def _check_and_trigger_salary_negotiations(self):
-        """Check if any employee type should start salary negotiations"""
-        # Calculate current year (360 days per year)
-        current_year = (self.game_day // 360) + 1
+        """Check if any employee type should start salary negotiations
+
+        Time system: 1 year = 12 days, so negotiations can happen every 12 days
+        """
+        # Calculate current year (12 days per year)
+        current_year = (self.game_day // 12) + 1
 
         # Calculate park profit (simple: recent income - expenses)
         park_profit = self.economy.cash - 10000  # Rough estimate based on starting cash
@@ -3107,6 +3113,10 @@ class Game:
                         emp = Mascot(emp_def, emp_data['x'], emp_data['y'])
                     else:
                         continue
+
+                    # Set negotiation manager reference
+                    emp.salary_negotiation_manager = self.salary_negotiation_manager
+
                     emp.state = emp_data.get('state', 'idle')
                     # Reset transitional/invalid states to idle
                     if emp.state == 'moving_to_nearby':
