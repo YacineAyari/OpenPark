@@ -1185,12 +1185,16 @@ class Game:
             total_minutes = int(total_seconds / 60)
             total_hours = total_minutes / 60
 
-            # Calculate day (starting from day 1)
-            self.game_day = int(total_hours / 24) + 1
+            # Calculate absolute hour (starting from starting_hour on day 1)
+            absolute_hour = self.starting_hour + total_hours
 
-            # Calculate hour and minute (starting from starting_hour)
-            hours_since_start = total_hours % 24
-            self.game_hour = int((self.starting_hour + hours_since_start) % 24)
+            # Calculate day based on absolute hour (day changes at 00:00)
+            # Day 1 starts at starting_hour, then continues until hour 24, then day 2 starts at hour 0
+            # Formula: days elapsed = floor(absolute_hour / 24), then add 1 for day 1
+            self.game_day = int(absolute_hour / 24) + 1
+
+            # Calculate current hour and minute
+            self.game_hour = int(absolute_hour % 24)
             self.game_minute = total_minutes % 60
 
         # Handle park closure evacuation
@@ -1308,10 +1312,12 @@ class Game:
         # Check for salary negotiations (once per day)
         if hasattr(self, '_last_negotiation_check_day'):
             if self.game_day != self._last_negotiation_check_day:
+                DebugConfig.log('engine', f"Day changed from {self._last_negotiation_check_day} to {self.game_day}, checking negotiations...")
                 self._check_and_trigger_salary_negotiations()
                 self._last_negotiation_check_day = self.game_day
         else:
             self._last_negotiation_check_day = self.game_day
+            DebugConfig.log('engine', f"First negotiation check initialized on day {self.game_day}")
         
         # Debug: Check for stuck visitors in rides
         for ride in self.rides:
@@ -2827,13 +2833,18 @@ class Game:
         # Calculate park profit (simple: recent income - expenses)
         park_profit = self.economy.cash - 10000  # Rough estimate based on starting cash
 
+        DebugConfig.log('engine', f"Negotiation check: Day {self.game_day}, Year {current_year}, Profit ${park_profit}")
+
         # Check each employee type
         for employee_type in ['engineer', 'maintenance', 'security', 'mascot']:
             # Get employees of this type
             employees_of_type = [emp for emp in self.employees if emp.defn.type == employee_type]
 
             if not employees_of_type:
+                DebugConfig.log('engine', f"  {employee_type}: No employees, skipping")
                 continue  # No employees of this type
+
+            DebugConfig.log('engine', f"  {employee_type}: Found {len(employees_of_type)} employees")
 
             # Check if we should trigger negotiation
             should_trigger = self.salary_negotiation_manager.should_trigger_negotiation(
@@ -2842,6 +2853,8 @@ class Game:
                 current_year,
                 park_profit
             )
+
+            DebugConfig.log('engine', f"  {employee_type}: should_trigger = {should_trigger}")
 
             if should_trigger:
                 # Get IDs of affected employees (those currently employed)

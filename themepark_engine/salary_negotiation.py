@@ -66,21 +66,29 @@ class SalaryNegotiationManager:
 
         Time system: 1 year = 12 days, 1 month = 1 day
         """
+        from .debug import DebugConfig
 
         # Get current month (1 day = 1 month, 12 days = 1 year)
         # Day 1 = Month 1, Day 2 = Month 2, ..., Day 12 = Month 12, Day 13 = Month 1 again
         current_month = ((current_day - 1) % 12) + 1
 
+        DebugConfig.log('engine', f"    {employee_type}: current_month={current_month}, required_month={self.negotiation_months.get(employee_type, 0)}")
+
         # Check if it's the right month for this type
         if current_month != self.negotiation_months.get(employee_type, 0):
+            DebugConfig.log('engine', f"    {employee_type}: Wrong month, skipping")
             return False
+
+        DebugConfig.log('engine', f"    {employee_type}: last_negotiation_year={self.last_negotiation_year.get(employee_type, 0)}, current_year={current_year}")
 
         # Check if already negotiated this year
         if self.last_negotiation_year.get(employee_type, 0) >= current_year:
+            DebugConfig.log('engine', f"    {employee_type}: Already negotiated this year, skipping")
             return False
 
         # Check if there's already an active negotiation
         if employee_type in self.active_negotiations:
+            DebugConfig.log('engine', f"    {employee_type}: Active negotiation exists, skipping")
             return False
 
         # Calculate probability based on park profit
