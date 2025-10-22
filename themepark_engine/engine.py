@@ -13,7 +13,7 @@ from .economy import Economy
 from .ui import Toolbar
 from .renderers.iso import IsoRenderer
 from .ui_parts.debug_menu import DebugMenu
-from .queues import SimpleQueueManager
+from .queue_v2 import QueueManagerV2
 from .serpent_queue import SerpentQueueManager, Direction, Movement, MovementType
 from .debug import DebugConfig
 from .litter import LitterManager, BinDef, DEFAULT_BIN, Litter
@@ -37,7 +37,7 @@ class Game:
         self.hud_icons = self._load_hud_icons()
 
         self.grid = MapGrid(64, 64); self.economy = Economy()
-        self.queue_manager = SimpleQueueManager()
+        self.queue_manager = QueueManagerV2()
         self.litter_manager = LitterManager(self.grid)  # Add litter management system with grid reference
         self.save_load_manager = SaveLoadManager()  # Save/Load system
         data = json.load(open(DATA/'objects.json','r'))
@@ -344,23 +344,31 @@ class Game:
         # Connect queues to rides based on proximity to entrances
         DebugConfig.log('engine', f"Connecting queues to rides, found {len(self.rides)} rides")
         for queue_path in self.queue_manager.queue_paths:
-            if not queue_path.connected_ride:
+            # Always check connections (even if already connected, to handle ride moves/deletions)
+            if queue_path.connected_ride:
+                DebugConfig.log('engine', f"Queue path already connected to {queue_path.connected_ride.defn.name}, verifying connection")
+            else:
                 DebugConfig.log('engine', f"Checking unconnected queue path with {len(queue_path.tiles)} tiles")
-                # Find the closest ride entrance
-                for ride in self.rides:
-                    DebugConfig.log('engine', f"Checking ride {ride.defn.name}")
-                    if ride.entrance:
-                        entrance_pos = (ride.entrance.x, ride.entrance.y)
-                        DebugConfig.log('engine', f"Ride {ride.defn.name} has entrance at {entrance_pos}")
-                        # Check if queue path is connected to ride entrance
-                        for tile in queue_path.tiles:
-                            tile_pos = (tile.x, tile.y)
-                            if tile_pos == entrance_pos:
-                                DebugConfig.log('engine', f"Connecting queue at {tile_pos} to ride {ride.defn.name} (exact match)")
-                                self.queue_manager.connect_queue_to_ride(queue_path, ride)
-                                break
-                        
-                        # Check if queue path is adjacent to ride entrance
+
+            # Clear existing connection to re-establish
+            queue_path.connected_ride = None
+
+            # Find the closest ride entrance
+            for ride in self.rides:
+                DebugConfig.log('engine', f"Checking ride {ride.defn.name}")
+                if ride.entrance:
+                    entrance_pos = (ride.entrance.x, ride.entrance.y)
+                    DebugConfig.log('engine', f"Ride {ride.defn.name} has entrance at {entrance_pos}")
+                    # Check if queue path is connected to ride entrance
+                    for tile in queue_path.tiles:
+                        tile_pos = (tile.x, tile.y)
+                        if tile_pos == entrance_pos:
+                            DebugConfig.log('engine', f"Connecting queue at {tile_pos} to ride {ride.defn.name} (exact match)")
+                            self.queue_manager.connect_queue_to_ride(queue_path, ride)
+                            break
+
+                    # If not connected yet, check if queue path is adjacent to ride entrance
+                    if not queue_path.connected_ride:
                         for tile in queue_path.tiles:
                             tile_pos = (tile.x, tile.y)
                             distance = abs(tile_pos[0] - entrance_pos[0]) + abs(tile_pos[1] - entrance_pos[1])
@@ -368,8 +376,12 @@ class Game:
                                 DebugConfig.log('engine', f"Connecting queue at {tile_pos} to ride {ride.defn.name} (adjacent)")
                                 self.queue_manager.connect_queue_to_ride(queue_path, ride)
                                 break
-                    else:
-                        DebugConfig.log('engine', f"Ride {ride.defn.name} has no entrance")
+
+                    # If connected, stop checking other rides
+                    if queue_path.connected_ride:
+                        break
+                else:
+                    DebugConfig.log('engine', f"Ride {ride.defn.name} has no entrance")
     
     def _find_ride_for_guest(self, guest):
         """Find a ride for a guest to queue for"""
@@ -379,6 +391,11 @@ class Game:
         import random
         available_rides = []
         for ride in self.rides:
+            # Skip rides that the guest recently tried but found full
+            if ride in guest.tried_rides:
+                DebugConfig.log('engine', f"Skipping ride {ride.defn.name} - guest {guest.id} tried recently (retry in {guest.tried_rides[ride]:.1f}s)")
+                continue
+
             DebugConfig.log('engine', f"Checking ride {ride.defn.name}")
             if ride.entrance and ride.exit:
                 DebugConfig.log('engine', f"Ride {ride.defn.name} has entrance and exit")
@@ -665,16 +682,11 @@ class Game:
                                     if not self._is_on_ride(gx, gy):
                                         # Place the queue tile
                                         self.grid.set(gx,gy,TILE_QUEUE_PATH)
+
+                                        # Record the placement (no previous tile on initial click)
+                                        self.queue_manager.record_tile_placement(gx, gy)
+
                                         self.path_dragging=True; self.last_path_pos=(gx,gy)
-                                        
-                                        # Check if this tile is adjacent to an existing queue tile
-                                        adjacent_direction = self._get_adjacent_queue_direction(gx, gy)
-                                        if adjacent_direction:
-                                            # Check if we can orient this waypoint (no conflicts)
-                                            if self.queue_manager.can_orient_waypoint(self.grid, gx, gy, adjacent_direction):
-                                                # Orient this waypoint towards the adjacent tile
-                                                self.queue_manager.orient_queue_waypoint(self.grid, gx, gy, adjacent_direction)
-                                        
                                         self.last_mouse_pos = e.pos
                                 elif placing.startswith('ride_') and self.ride_placement_mode is None:
                                     rd=self.ride_defs.get(placing)
@@ -894,17 +906,16 @@ class Game:
                                 self.last_path_pos=(gx,gy)
                             elif placing=='queue_path':
                                 # Place queue tile during drag
+                                prev_pos = self.last_path_pos
                                 self.grid.set(gx,gy,TILE_QUEUE_PATH)
+
+                                # Record the placement and link to previous tile if dragging
+                                if prev_pos and self.grid.get(prev_pos[0], prev_pos[1]) == TILE_QUEUE_PATH:
+                                    self.queue_manager.record_tile_placement(gx, gy, prev_pos[0], prev_pos[1])
+                                else:
+                                    self.queue_manager.record_tile_placement(gx, gy)
+
                                 self.last_path_pos=(gx,gy)
-                                
-                                # Check if this tile is adjacent to an existing queue tile
-                                adjacent_direction = self._get_adjacent_queue_direction(gx, gy)
-                                if adjacent_direction:
-                                    # Check if we can orient this waypoint (no conflicts)
-                                    if self.queue_manager.can_orient_waypoint(self.grid, gx, gy, adjacent_direction):
-                                        # Orient this waypoint towards the adjacent tile
-                                        self.queue_manager.orient_queue_waypoint(self.grid, gx, gy, adjacent_direction)
-                                
                                 self.last_mouse_pos = e.pos
         # keyboard pan
         keys=pygame.key.get_pressed(); sp=600*self.clock.get_time()/1000.0
@@ -1157,7 +1168,8 @@ class Game:
         # Handle unhappy guests leaving the park
         self._handle_leaving_guests()
 
-        # Update queue system
+        # Update queue system (with visitor preservation enabled, it's safe to call every frame)
+        # This ensures queues stay connected to rides and visitor data is preserved
         self._update_queue_system()
 
         # Update litter manager
@@ -1245,7 +1257,11 @@ class Game:
         # Update rides
         for ride in self.rides:
             ride.tick(scaled_dt)
-        
+
+        # Update queue paths (check visitor movement)
+        for queue_path in self.queue_manager.queue_paths:
+            queue_path.tick(scaled_dt)
+
         # Assign engineers to broken rides
         self._assign_engineers_to_broken_rides()
         
@@ -2194,16 +2210,16 @@ class Game:
         self.screen.fill((20,60,90))
         # Supprimer l'ancienne barre en haut
         # pygame.draw.rect(self.screen,(30,30,30),(0,0,self.screen.get_width(),48))
-        self.renderer.draw_map(self.grid)
-        
-        # Dessiner les flèches de queue si activées
-        if self.debug_menu.show_queue_arrows:
-            queue_paths = self.queue_manager.find_queue_paths(self.grid)
-            self.renderer.draw_queue_arrows(queue_paths, True)
-        
-        # Dessiner les points cardinaux et la légende des directions
-        self.renderer.draw_cardinal_points()
-        self.renderer.draw_direction_legend()
+
+        # Build queue directions dictionary from queue manager
+        queue_directions = {}
+        for queue_path in self.queue_manager.queue_paths:
+            for tile in queue_path.tiles:
+                # Map QueueDirection enum to simple string for renderer
+                direction_str = tile.direction.value if hasattr(tile.direction, 'value') else str(tile.direction)
+                queue_directions[(tile.x, tile.y)] = direction_str
+
+        self.renderer.draw_map(self.grid, queue_directions)
         
         objs=[]
         for r in self.rides:
@@ -3186,6 +3202,59 @@ class Game:
 
             # Update queue system
             self._update_queue_system()
+
+            # Restore guest queue references for guests in queuing/walking_to_queue states
+            for guest in self.guests:
+                if guest.state == 'queuing':
+                    # Guest was in a queue - need to re-add them to the queue
+                    # Find the queue based on the target ride
+                    if guest.target_ride:
+                        queue_path = self.queue_manager.get_queue_for_ride(guest.target_ride)
+                        if queue_path and queue_path.can_enter():
+                            # Re-add to queue
+                            success = queue_path.add_visitor(guest)
+                            if success:
+                                guest.current_queue = queue_path
+                                guest.target_queue = queue_path
+                                DebugConfig.log('queues', f"Restored guest {guest.id} to queue for {guest.target_ride.defn.name}")
+                            else:
+                                # Queue full, reset to wandering
+                                guest.state = 'wandering'
+                                guest.target_ride = None
+                                guest.current_queue = None
+                                guest.target_queue = None
+                                DebugConfig.log('queues', f"Guest {guest.id} was queuing but queue full - reset to wandering")
+                        else:
+                            # No queue found, reset to wandering
+                            guest.state = 'wandering'
+                            guest.target_ride = None
+                            guest.current_queue = None
+                            guest.target_queue = None
+                            DebugConfig.log('queues', f"Guest {guest.id} was queuing but no queue found - reset to wandering")
+                    else:
+                        # No target ride, reset to wandering
+                        guest.state = 'wandering'
+                        guest.current_queue = None
+                        guest.target_queue = None
+                        DebugConfig.log('queues', f"Guest {guest.id} was queuing but no target ride - reset to wandering")
+                elif guest.state == 'walking_to_queue':
+                    # Guest was walking to a queue - restore queue reference
+                    if guest.target_ride:
+                        queue_path = self.queue_manager.get_queue_for_ride(guest.target_ride)
+                        if queue_path:
+                            guest.target_queue = queue_path
+                            DebugConfig.log('queues', f"Restored target_queue for guest {guest.id} walking to {guest.target_ride.defn.name}")
+                        else:
+                            # No queue found, reset to wandering
+                            guest.state = 'wandering'
+                            guest.target_ride = None
+                            guest.target_queue = None
+                            DebugConfig.log('queues', f"Guest {guest.id} was walking_to_queue but no queue found - reset to wandering")
+                    else:
+                        # No target ride, reset to wandering
+                        guest.state = 'wandering'
+                        guest.target_queue = None
+                        DebugConfig.log('queues', f"Guest {guest.id} was walking_to_queue but no target ride - reset to wandering")
 
             print(f"Game loaded successfully from: {save_name}")
             return True

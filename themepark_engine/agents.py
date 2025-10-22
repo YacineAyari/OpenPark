@@ -82,6 +82,10 @@ class Guest:
         self.shop_duration = 2.0  # Time spent in shop
         self.id = random.randint(1000, 9999)  # Unique ID for debugging
 
+        # Queue management - track rides with full queues to avoid retrying immediately
+        self.tried_rides = {}  # {ride: timer} - rides tried but queue was full, with countdown timer
+        self.ride_retry_delay = 30.0  # Seconds to wait before retrying a full queue
+
         # Money and budget system
         self.budget = random.randint(75, 300)  # Total budget for park visit ($75-$300)
         self.money = self.budget  # Current money (reduced by entrance fee and purchases)
@@ -149,6 +153,21 @@ class Guest:
             self.litter_hold_timer += dt
             if int(self.litter_hold_timer) != int(self.litter_hold_timer - dt):  # Log every second
                 DebugConfig.log('litter', f"Guest {self.id} holding litter: {self.litter_hold_timer:.1f}/{self.litter_hold_duration:.1f}s (state={self.state})")
+
+        # Update tried rides timers - decrement and remove expired ones
+        # Ensure tried_rides exists (for backward compatibility with old saves)
+        if not hasattr(self, 'tried_rides'):
+            self.tried_rides = {}
+            self.ride_retry_delay = 30.0
+
+        rides_to_remove = []
+        for ride, timer in self.tried_rides.items():
+            self.tried_rides[ride] = timer - dt
+            if self.tried_rides[ride] <= 0:
+                rides_to_remove.append(ride)
+        for ride in rides_to_remove:
+            del self.tried_rides[ride]
+            DebugConfig.log('guests', f"Guest {self.id} retry timer expired for ride {ride.defn.name}")
 
         # Log state changes
         if hasattr(self, '_last_logged_state') and self._last_logged_state != self.state:
@@ -266,8 +285,11 @@ class Guest:
                     self.target_queue = None
                     self.target_ride = None
             else:
-                # Queue is full, go back to wandering
+                # Queue is full, go back to wandering and mark this ride as tried
                 DebugConfig.log('guests', f"Guest {self.id} queue full or no target queue, returning to wandering")
+                if self.target_ride:
+                    self.tried_rides[self.target_ride] = self.ride_retry_delay
+                    DebugConfig.log('guests', f"Guest {self.id} marked ride {self.target_ride.defn.name} as full, will retry in {self.ride_retry_delay}s")
                 self.state = GuestState.WANDERING
                 self.target_queue = None
                 self.target_ride = None
