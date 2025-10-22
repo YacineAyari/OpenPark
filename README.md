@@ -4,7 +4,7 @@
 
 OpenPark est une simulation de parc d'attractions en **projection oblique**, développée en Python avec Pygame. Gérez votre parc, construisez des attractions, employez du personnel, et gardez vos visiteurs heureux!
 
-![Version](https://img.shields.io/badge/version-0.3.2--alpha-orange)
+![Version](https://img.shields.io/badge/version-0.4.0--alpha-orange)
 ![Python](https://img.shields.io/badge/python-3.8+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![AI-Powered](https://img.shields.io/badge/AI--Powered-Claude%20%26%20GPT-purple)
@@ -28,12 +28,14 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 - ✅ **Système de besoins des visiteurs** (hunger/thirst/bladder, IA prioritaire, toilettes multi-tailles)
 - ✅ **Système de temps et vitesse** (temps in-game, pause/x1/x2/x3, ouverture/fermeture parc)
 - ✅ **Système de satisfaction dynamique** (15+ facteurs influençant le comportement des visiteurs)
-- ✅ **Files d'attente serpentines** (détection automatique de patterns, mouvements directionnels)
+- ✅ **Queue System V2** (placement links, flèches directionnelles, retry intelligent)
+- ✅ **6 attractions variées** (Carousel, Bumper, Ferris Wheel, Train, Pirate Ship, Circus)
 - ✅ **Gestion du litter** (state machine visiteurs, assignation automatique d'employés)
 - ✅ **Projection oblique configurable** (math oblique, picking inverse, debug controls)
 - ✅ **UI temps réel** (stats colorées, indicateurs visuels, feedback instantané, coloration tuiles)
-- ✅ **Système de sprites OpenMoji** (emojis haute qualité, 21 sprites, diversité visuelle)
+- ✅ **Système de sprites OpenMoji** (emojis haute qualité, 30+ sprites, diversité visuelle)
 - ✅ **Zoom avec molette** (centré sur curseur, limites intelligentes, sprites adaptatifs)
+- ✅ **Système de sauvegarde/chargement** (sauvegardes complètes, restauration des états)
 
 **Résultat**: Un moteur de jeu complet et fonctionnel développé entièrement via conversation avec IA! 🚀
 
@@ -61,11 +63,14 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 
 #### 🏗️ **Système de construction**
 - **Chemins piétonniers** - Réseau de paths pour la circulation des visiteurs
-- **Attractions** (Rides) - Placement multi-tuiles avec entrées/sorties
-- **Boutiques** (Shops) - 3 types (food/drink/souvenir), génération de revenus
+- **6 Attractions variées** (Rides) - Carousel, Bumper Cars, Ferris Wheel, Park Train, Pirate Ship, Circus Show
+  - Capacités: 12 à 30 visiteurs
+  - Durées variées: 7 à 15 secondes
+  - Thrill/Nausea: 0.1 à 0.7 (préférences visiteurs)
+- **Boutiques** (Shops) - 7 types (soda, ice cream, hotdog, fries, restaurant, gift shop)
 - **Toilettes** (Restrooms) - 4 tailles (1x1, 2x1, 2x2, 3x2), capacité 2 à 8 visiteurs
 - **Poubelles** - Gestion de la propreté du parc
-- **Files d'attente** - Système de queues linéaires et serpentines
+- **Queue System V2** - Placement links, flèches directionnelles N/S/E/W, retry intelligent
 
 #### 👥 **Intelligence Artificielle des visiteurs**
 - **State machine complète** - 11+ états différents (wandering, queuing, riding, shopping, eating, drinking, using_restroom, etc.)
@@ -121,10 +126,12 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
   - **Très rapide** (3) - game_speed = 3.0, accéléré x3
 
 #### 🔧 **Gameplay**
-- **Pannes d'attractions** - Probabilité de breakdown, évacuation des queues
+- **Pannes d'attractions** - Probabilité de breakdown, évacuation immédiate des queues
 - **Assignation automatique** - Les employés trouvent automatiquement du travail
 - **Pathfinding A*** - Navigation intelligente pour visiteurs et employés
 - **Mouvement fluide** - Interpolation smooth des positions (60 FPS)
+- **Retry intelligent** - Visiteurs ne retentent pas immédiatement une queue pleine (30s cooldown)
+- **Sauvegarde/Chargement** - Système complet de save/load avec restauration des états
 
 #### 🐛 **Debug & Development**
 - **Système de logging catégorisé** - GUESTS, RIDES, EMPLOYEES, ENGINE, etc.
@@ -137,18 +144,29 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 
 #### 🎯 **Priorité HAUTE (Quick Wins)**
 
-- [ ] **Départ des visiteurs mécontents**
-  - Les visiteurs avec satisfaction < 20% quittent le parc
-  - Perte de revenus potentiels, indicateur de performance
+- [x] **Queue System V2** ✅
+  - Placement links pour suivre l'ordre de construction
+  - Flèches directionnelles sur les tiles de queue
+  - Retry intelligent pour queues pleines
 
-- [ ] **Sauvegarde/chargement**
+- [x] **6 Attractions variées** ✅
+  - Ferris Wheel, Park Train, Pirate Ship, Circus Show
+  - Équilibrage des capacités et durées
+
+- [x] **Sauvegarde/chargement** ✅
   - Sérialisation JSON de l'état du parc
   - Load/Save depuis le menu
 
-- [ ] **Ajouter plus d'attractions**
-  - Roller coaster, Ferris wheel, Monorail
-  - Haunted house, Water rides
-  - Variété pour améliorer l'expérience
+- [ ] **Améliorer le système économique**
+  - Graphiques de revenus/dépenses au fil du temps
+  - Équilibrage des coûts et revenus
+  - Alertes pour budget bas
+  - Objectifs financiers
+
+- [ ] **Ajouter plus de shops variés**
+  - Pizza, burgers, candy, popcorn
+  - Boutiques de souvenirs variées
+  - Stands de jeux/merchandise
 
 #### 🚀 **Priorité MOYENNE (Améliorations majeures)**
 

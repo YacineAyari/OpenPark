@@ -203,50 +203,50 @@
     - Attribution aléatoire à chaque visiteur
     - Rendu visuel réaliste et inclusif
 
+31. ✅ **Queue System V2**
+    - Statut : Complété
+    - Difficulté : 4/5
+    - Migration de SimpleQueueManager vers QueueManagerV2
+    - Système de placement links pour suivre l'ordre de construction
+    - Flèches directionnelles (N/S/E/W) sur les tiles de queue
+    - Système de retry intelligent (30s cooldown pour queues pleines)
+    - Restauration des références de queue après save/load
+
+32. ✅ **Variété d'attractions**
+    - Statut : Complété
+    - Difficulté : 2/5
+    - 6 attractions au total (Carousel, Bumper Cars, Ferris Wheel, Park Train, Pirate Ship, Circus Show)
+    - Sprites OpenMoji téléchargés
+    - Équilibrage des capacités, prix, durées, frisson/nausée
+    - Gameplay varié avec différents types d'attractions
+
 ## Tâches en attente 📋
 
 ### Haute priorité
 
-31. **Compléter les systèmes d'employés restants**
-    - Difficulté : 3/5
-    - Gardien de parc : sécurité et prévention des vols (déjà implémenté)
-    - Mascotte : augmentation de l'excitation des visiteurs (déjà implémenté)
-    - Note : Les 4 types d'employés sont maintenant opérationnels
-
-32. **Ajouter plus d'attractions dans objects.json**
-    - Difficulté : 2/5
-    - Roller coaster
-    - Ferris wheel
-    - Monorail
-    - Haunted house
-    - Water rides
-
 33. **Améliorer le système économique**
     - Difficulté : 3/5
-    - Budget de départ plus réaliste
+    - Graphiques de revenus/dépenses au fil du temps
     - Équilibrage des coûts et revenus
-    - Système de prêts ou faillite
-    - Graphiques et statistiques financières
+    - Système de prêts ou objectifs financiers
+    - Statistiques financières détaillées
+    - Alertes pour budget bas
+
+34. **Ajouter plus de shops variés**
+    - Difficulté : 2/5
+    - Pizza, burgers, candy, popcorn
+    - Boutiques de souvenirs variées
+    - Stands de jeux/merchandise
+    - Équilibrage des prix et marges
 
 ### Priorité moyenne
 
-34. **Améliorer la toolbar**
+35. **Ajouter des animations pour les attractions**
     - Difficulté : 3/5
-    - Interface plus moderne et intuitive
-    - Icônes plus claires
-    - Meilleure organisation des catégories
-
-35. **Système de sauvegarde/chargement**
-    - Difficulté : 3/5
-    - Sauvegarde complète du parc (attractions, chemins, shops, employés, visiteurs)
-    - Chargement des parcs sauvegardés
-    - Gestion de plusieurs sauvegardes
-
-36. **Ajouter des animations pour les attractions**
-    - Difficulté : 3/5
-    - Animations des attractions en fonctionnement
-    - Effets visuels (rotation, mouvement)
+    - Rotation pour carrousel et grande roue
+    - Mouvement pour bateau pirate
     - Indicateurs visuels de l'état (ouvert/fermé/en panne)
+    - Effets visuels durant le ride
 
 ### Priorité basse
 
@@ -292,12 +292,14 @@
 - ✅ Vue oblique avec angle Phi de 10°
 - ✅ Système de debug stable et fonctionnel
 - ✅ Placement de chemins en continu
-- ✅ Système de files d'attente linéaire
+- ✅ **Queue System V2** avec placement links et flèches directionnelles
+- ✅ Système de retry intelligent pour queues pleines
+- ✅ **6 attractions variées** (Carousel, Bumper, Ferris, Train, Ship, Circus)
 - ✅ Capacité normale des attractions
 - ✅ Lancement automatique des attractions
 - ✅ Sélection intelligente des attractions
 - ✅ Mouvement fluide des visiteurs
-- ✅ Toolbar groupée et sous-menus
+- ✅ Toolbar avec icônes et emojis
 - ✅ Shops fonctionnels avec types (food/drink/souvenir)
 - ✅ Système d'ingénieurs complet avec déplacement fluide
 - ✅ Système de pannes d'attractions
@@ -315,6 +317,7 @@
 - ✅ Coloration visuelle des tuiles (rides/shops/restrooms/bins)
 - ✅ Pathfinding de base
 - ✅ Économie de base (cash, coûts, revenus, salaires)
+- ✅ **Système de sauvegarde/chargement** complet
 - ✅ Système de sprites OpenMoji (emojis haute qualité)
 - ✅ Zoom avec molette de souris (centré sur curseur)
 - ✅ Sprites adaptatifs au zoom (scaling automatique)
@@ -324,10 +327,10 @@
 - Aucun (système stable)
 
 ### Prochaines étapes recommandées
-1. Ajouter plus d'attractions dans `objects.json` (variété)
-2. Améliorer le système économique (équilibrage, graphiques)
-3. Système de sauvegarde/chargement
-4. Animations des attractions
+1. Améliorer le système économique (graphiques financiers, équilibrage)
+2. Ajouter plus de shops variés (pizza, candy, merchandise)
+3. Animations des attractions (rotation, mouvement)
+4. Optimiser le pathfinding pour meilleures performances
 
 ### Architecture technique
 
