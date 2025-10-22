@@ -1,6 +1,243 @@
 
 import pygame
 
+class NegotiationModal:
+    """Modal panel for salary negotiation with employees"""
+
+    def __init__(self, font, large_font=None):
+        self.font = font
+        self.large_font = large_font or font
+        self.visible = False
+        self.negotiation = None  # NegotiationState object
+        self.employee_type = None
+        self.employee_count = 0
+        self.counter_offer = 0
+        self.slider_dragging = False
+
+        # UI elements rects
+        self.accept_button = None
+        self.reject_button = None
+        self.counter_button = None
+        self.slider_rect = None
+        self.slider_handle_rect = None
+
+    def show(self, negotiation, employee_type, employee_count):
+        """Show the negotiation modal"""
+        self.visible = True
+        self.negotiation = negotiation
+        self.employee_type = employee_type
+        self.employee_count = employee_count
+        # Initialize counter offer to midpoint between current and demanded
+        self.counter_offer = (negotiation.current_salary + negotiation.demanded_salary) // 2
+
+    def hide(self):
+        """Hide the negotiation modal"""
+        self.visible = False
+        self.negotiation = None
+        self.employee_type = None
+        self.slider_dragging = False
+
+    def handle_event(self, event):
+        """Handle mouse events for the modal"""
+        if not self.visible:
+            return None
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mouse_pos = event.pos
+
+            # Check button clicks
+            if self.accept_button and self.accept_button.collidepoint(mouse_pos):
+                return ('accept', self.negotiation.demanded_salary)
+            elif self.reject_button and self.reject_button.collidepoint(mouse_pos):
+                return ('reject', 0)
+            elif self.counter_button and self.counter_button.collidepoint(mouse_pos):
+                return ('counter', self.counter_offer)
+
+            # Check slider click
+            if self.slider_rect and self.slider_rect.collidepoint(mouse_pos):
+                self.slider_dragging = True
+                self._update_slider_from_mouse(mouse_pos)
+
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.slider_dragging = False
+
+        elif event.type == pygame.MOUSEMOTION:
+            if self.slider_dragging:
+                self._update_slider_from_mouse(event.pos)
+
+        return None
+
+    def _update_slider_from_mouse(self, mouse_pos):
+        """Update counter offer based on slider position"""
+        if not self.slider_rect or not self.negotiation:
+            return
+
+        # Calculate position along slider
+        x = mouse_pos[0]
+        slider_start = self.slider_rect.x
+        slider_width = self.slider_rect.width
+
+        # Clamp to slider bounds
+        x = max(slider_start, min(slider_start + slider_width, x))
+
+        # Calculate value (from current salary to demanded + 20%)
+        ratio = (x - slider_start) / slider_width
+        min_value = self.negotiation.current_salary
+        max_value = int(self.negotiation.demanded_salary * 1.2)
+        self.counter_offer = int(min_value + ratio * (max_value - min_value))
+
+    def draw(self, screen):
+        """Draw the negotiation modal"""
+        if not self.visible or not self.negotiation:
+            return
+
+        # Semi-transparent overlay
+        overlay = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        screen.blit(overlay, (0, 0))
+
+        # Modal panel
+        panel_width = 600
+        panel_height = 450
+        panel_x = (screen.get_width() - panel_width) // 2
+        panel_y = (screen.get_height() - panel_height) // 2
+
+        panel_rect = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
+        pygame.draw.rect(screen, (40, 40, 50), panel_rect)
+        pygame.draw.rect(screen, (200, 200, 100), panel_rect, 3)
+
+        # Title
+        from .salary_negotiation import NegotiationStage
+        stage_names = {
+            NegotiationStage.FIRST_PROPOSAL: "Négociation Salariale - Première Proposition",
+            NegotiationStage.SECOND_PROPOSAL: "Négociation Salariale - Deuxième Proposition",
+            NegotiationStage.THIRD_PROPOSAL: "Négociation Salariale - Dernière Proposition",
+            NegotiationStage.STRIKE: "GRÈVE EN COURS !",
+            NegotiationStage.FINAL_ULTIMATUM: "ULTIMATUM FINAL !"
+        }
+        title = stage_names.get(self.negotiation.current_stage, "Négociation Salariale")
+        title_surf = self.large_font.render(title, True, (255, 255, 100))
+        title_rect = title_surf.get_rect(centerx=panel_x + panel_width // 2, top=panel_y + 20)
+        screen.blit(title_surf, title_rect)
+
+        # Employee info
+        y = panel_y + 70
+        employee_type_display = {
+            'engineer': 'Ingénieurs',
+            'maintenance': 'Agents de Maintenance',
+            'security': 'Gardes de Sécurité',
+            'mascot': 'Mascottes'
+        }
+        emp_text = f"{employee_type_display.get(self.employee_type, self.employee_type)}: {self.employee_count} employés"
+        emp_surf = self.font.render(emp_text, True, (255, 255, 255))
+        screen.blit(emp_surf, (panel_x + 40, y))
+
+        # Current stage info
+        y += 35
+        if self.negotiation.current_stage == NegotiationStage.FIRST_PROPOSAL:
+            stage_text = "Les employés demandent une augmentation de salaire."
+        elif self.negotiation.current_stage == NegotiationStage.SECOND_PROPOSAL:
+            stage_text = "Offre refusée ! Efficacité -35%. Nouvelle proposition ?"
+        elif self.negotiation.current_stage == NegotiationStage.THIRD_PROPOSAL:
+            stage_text = "Offre refusée ! Efficacité -75%. Dernière chance !"
+        elif self.negotiation.current_stage == NegotiationStage.STRIKE:
+            stage_text = "GRÈVE ! Les employés ne travaillent plus. Acceptez maintenant !"
+        else:  # FINAL_ULTIMATUM
+            stage_text = "ULTIMATUM ! Acceptez ou tous les employés démissionnent !"
+
+        stage_surf = self.font.render(stage_text, True, (255, 200, 200))
+        screen.blit(stage_surf, (panel_x + 40, y))
+
+        # Salary info
+        y += 50
+        current_text = f"Salaire actuel:  ${self.negotiation.current_salary}/jour"
+        current_surf = self.font.render(current_text, True, (200, 200, 200))
+        screen.blit(current_surf, (panel_x + 40, y))
+
+        y += 30
+        demanded_text = f"Salaire demandé: ${self.negotiation.demanded_salary}/jour"
+        demanded_surf = self.font.render(demanded_text, True, (255, 255, 100))
+        screen.blit(demanded_surf, (panel_x + 40, y))
+
+        y += 30
+        increase_pct = int(((self.negotiation.demanded_salary - self.negotiation.current_salary) / self.negotiation.current_salary) * 100)
+        increase_text = f"Augmentation:    +{increase_pct}%"
+        increase_surf = self.font.render(increase_text, True, (255, 150, 150))
+        screen.blit(increase_surf, (panel_x + 40, y))
+
+        # Counter offer slider
+        y += 60
+        slider_label = self.font.render("Contre-proposition:", True, (255, 255, 255))
+        screen.blit(slider_label, (panel_x + 40, y))
+
+        y += 30
+        slider_width = 520
+        slider_height = 10
+        self.slider_rect = pygame.Rect(panel_x + 40, y, slider_width, slider_height)
+        pygame.draw.rect(screen, (80, 80, 90), self.slider_rect)
+        pygame.draw.rect(screen, (150, 150, 160), self.slider_rect, 1)
+
+        # Slider handle
+        min_value = self.negotiation.current_salary
+        max_value = int(self.negotiation.demanded_salary * 1.2)
+        ratio = (self.counter_offer - min_value) / (max_value - min_value)
+        handle_x = int(self.slider_rect.x + ratio * self.slider_rect.width)
+        self.slider_handle_rect = pygame.Rect(handle_x - 8, self.slider_rect.y - 5, 16, 20)
+        pygame.draw.rect(screen, (200, 200, 100), self.slider_handle_rect)
+        pygame.draw.rect(screen, (255, 255, 150), self.slider_handle_rect, 2)
+
+        # Counter offer value
+        counter_text = f"${self.counter_offer}/jour"
+        counter_surf = self.font.render(counter_text, True, (200, 255, 200))
+        counter_rect = counter_surf.get_rect(centerx=panel_x + panel_width // 2, top=y + 25)
+        screen.blit(counter_surf, counter_rect)
+
+        # Acceptance threshold indicator
+        acceptance_threshold = self.negotiation.demanded_salary * 0.8
+        if self.counter_offer >= acceptance_threshold:
+            threshold_text = "✓ Probablement accepté"
+            threshold_color = (100, 255, 100)
+        else:
+            threshold_text = "✗ Probablement refusé"
+            threshold_color = (255, 100, 100)
+        threshold_surf = self.font.render(threshold_text, True, threshold_color)
+        threshold_rect = threshold_surf.get_rect(centerx=panel_x + panel_width // 2, top=y + 50)
+        screen.blit(threshold_surf, threshold_rect)
+
+        # Buttons
+        button_y = panel_y + panel_height - 70
+        button_width = 150
+        button_height = 40
+        button_spacing = 20
+
+        # Accept button
+        accept_x = panel_x + (panel_width - button_width * 3 - button_spacing * 2) // 2
+        self.accept_button = pygame.Rect(accept_x, button_y, button_width, button_height)
+        pygame.draw.rect(screen, (60, 120, 60), self.accept_button)
+        pygame.draw.rect(screen, (100, 200, 100), self.accept_button, 2)
+        accept_text = self.font.render("Accepter", True, (255, 255, 255))
+        accept_text_rect = accept_text.get_rect(center=self.accept_button.center)
+        screen.blit(accept_text, accept_text_rect)
+
+        # Counter button
+        counter_x = accept_x + button_width + button_spacing
+        self.counter_button = pygame.Rect(counter_x, button_y, button_width, button_height)
+        pygame.draw.rect(screen, (100, 100, 60), self.counter_button)
+        pygame.draw.rect(screen, (200, 200, 100), self.counter_button, 2)
+        counter_btn_text = self.font.render("Proposer", True, (255, 255, 255))
+        counter_btn_text_rect = counter_btn_text.get_rect(center=self.counter_button.center)
+        screen.blit(counter_btn_text, counter_btn_text_rect)
+
+        # Reject button
+        reject_x = counter_x + button_width + button_spacing
+        self.reject_button = pygame.Rect(reject_x, button_y, button_width, button_height)
+        pygame.draw.rect(screen, (120, 60, 60), self.reject_button)
+        pygame.draw.rect(screen, (200, 100, 100), self.reject_button, 2)
+        reject_text = self.font.render("Refuser", True, (255, 255, 255))
+        reject_text_rect = reject_text.get_rect(center=self.reject_button.center)
+        screen.blit(reject_text, reject_text_rect)
+
+
 class Toolbar:
     def __init__(self, font, ride_defs=None, shop_defs=None, employee_defs=None, bin_defs=None, restroom_defs=None, decoration_defs=None):
         self.font = font

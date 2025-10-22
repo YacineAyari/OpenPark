@@ -11,7 +11,7 @@ from .restrooms import Restroom, RestroomDef
 from .decorations import Decoration, DecorationDef
 from .employees import EmployeeDef, Engineer, MaintenanceWorker, SecurityGuard, Mascot
 from .economy import Economy
-from .ui import Toolbar
+from .ui import Toolbar, NegotiationModal
 from .renderers.iso import IsoRenderer
 from .ui_parts.debug_menu import DebugMenu
 from .queue_v2 import QueueManagerV2
@@ -70,6 +70,11 @@ class Game:
         self.proj_index = max(0, self.proj_presets.index(default_proj) if default_proj in self.proj_presets else 0)
         self.debug_menu = DebugMenu(self.font, self.proj_presets, self.proj_index, oblique_tilt=default_tilt)
         self.toolbar = Toolbar(self.font, self.ride_defs, self.shop_defs, self.employee_defs, self.bin_defs, self.restroom_defs, self.decoration_defs)
+
+        # Negotiation modal
+        large_font = pygame.font.SysFont('Arial', 20, bold=True)
+        self.negotiation_modal = NegotiationModal(self.font, large_font)
+
         self.dragging=False; self.drag_start=(0,0); self.cam_start=(0,0)
         self.path_dragging=False; self.last_path_pos=None
 
@@ -473,6 +478,19 @@ class Game:
         hover=None
         for e in pygame.event.get():
             if e.type==pygame.QUIT: return False, placing, hover
+
+            # Handle negotiation modal events first (if visible)
+            if self.negotiation_modal.visible:
+                result = self.negotiation_modal.handle_event(e)
+                if result:
+                    action, offer = result
+                    if action == 'accept':
+                        self._handle_negotiation_response(offer, accept=True)
+                    elif action == 'counter':
+                        self._handle_negotiation_response(offer, accept=False)
+                    elif action == 'reject':
+                        self._handle_negotiation_response(0, accept=False)
+                continue  # Don't process other events while modal is open
             if e.type==pygame.KEYDOWN:
                 # Handle text input for save/load dialog
                 if self.save_load_dialog_open and self.save_load_mode == 'save':
@@ -2552,6 +2570,9 @@ class Game:
         self.toolbar.draw(self.screen)
         self.debug_menu.draw(self.screen)
 
+        # Draw negotiation modal (on top of everything)
+        self.negotiation_modal.draw(self.screen)
+
         # Draw top HUD bar (after toolbar to be on top)
         self._draw_top_hud_bar(
             num_guests, avg_happiness, avg_satisfaction, avg_excitement,
@@ -2834,9 +2855,48 @@ class Game:
                     self.game_day
                 )
 
+                # Show negotiation modal
+                self.negotiation_modal.show(negotiation, employee_type, len(employees_of_type))
+
                 DebugConfig.log('engine', f"Started salary negotiation for {employee_type}s: ${negotiation.current_salary} -> ${negotiation.demanded_salary}")
 
-                # TODO: Show notification to player
+    def _handle_negotiation_response(self, player_offer, accept=False):
+        """Handle player's response to salary negotiation"""
+        if not self.negotiation_modal.visible or not self.negotiation_modal.employee_type:
+            return
+
+        employee_type = self.negotiation_modal.employee_type
+
+        # If accepting the demand, use the demanded salary
+        if accept and self.negotiation_modal.negotiation:
+            player_offer = self.negotiation_modal.negotiation.demanded_salary
+
+        # Process the response
+        accepted, message = self.salary_negotiation_manager.process_negotiation_response(
+            employee_type,
+            player_offer,
+            self.game_day
+        )
+
+        DebugConfig.log('engine', f"Negotiation response for {employee_type}s: offer ${player_offer}, result: {message}")
+
+        if accepted:
+            # Update salary for all affected employees
+            employees_of_type = [emp for emp in self.employees if emp.defn.type == employee_type]
+            for emp in employees_of_type:
+                emp.defn.salary = player_offer
+            DebugConfig.log('engine', f"Updated {len(employees_of_type)} {employee_type}s to salary ${player_offer}/day")
+
+            # Hide modal
+            self.negotiation_modal.hide()
+        else:
+            # Negotiation continues to next stage
+            # Get updated negotiation state
+            negotiation = self.salary_negotiation_manager.get_active_negotiation(employee_type)
+            if negotiation:
+                # Update modal with new stage
+                employees_of_type = [emp for emp in self.employees if emp.defn.type == employee_type]
+                self.negotiation_modal.show(negotiation, employee_type, len(employees_of_type))
 
     def _apply_litter_proximity_penalties(self):
         """Apply satisfaction penalties to guests near litter"""
