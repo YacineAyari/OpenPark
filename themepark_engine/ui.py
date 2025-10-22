@@ -2,13 +2,14 @@
 import pygame
 
 class Toolbar:
-    def __init__(self, font, ride_defs=None, shop_defs=None, employee_defs=None, bin_defs=None, restroom_defs=None):
+    def __init__(self, font, ride_defs=None, shop_defs=None, employee_defs=None, bin_defs=None, restroom_defs=None, decoration_defs=None):
         self.font = font
         self.ride_defs = ride_defs or {}
         self.shop_defs = shop_defs or {}
         self.employee_defs = employee_defs or {}
         self.bin_defs = bin_defs or {}
         self.restroom_defs = restroom_defs or {}
+        self.decoration_defs = decoration_defs or {}
         self._load_toolbar_icons()
         self._build_groups()
         self.active = 'walk_path'
@@ -105,12 +106,15 @@ class Toolbar:
         for emp_id, emp_def in self.employee_defs.items():
             self.groups['employees']['items'].append((emp_def.name, emp_id, emp_def.salary))
 
-        # Add bins and restrooms to facilities group
+        # Add bins, restrooms, and decorations to facilities group
         for bin_id, bin_def in self.bin_defs.items():
             self.groups['facilities']['items'].append((bin_def.name, bin_id, bin_def.cost))
 
         for restroom_id, restroom_def in self.restroom_defs.items():
             self.groups['facilities']['items'].append((restroom_def.name, restroom_id, restroom_def.build_cost))
+
+        for deco_id, deco_def in self.decoration_defs.items():
+            self.groups['facilities']['items'].append((deco_def.name, deco_id, deco_def.cost))
     
     def update_definitions(self, ride_defs=None, shop_defs=None, employee_defs=None):
         """Update the definitions and rebuild groups"""

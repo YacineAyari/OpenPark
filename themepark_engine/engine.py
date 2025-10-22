@@ -8,6 +8,7 @@ from .agents import Guest
 from .rides import Ride, RideDef, RideEntrance, RideExit
 from .shops import Shop, ShopDef, ShopEntrance
 from .restrooms import Restroom, RestroomDef
+from .decorations import Decoration, DecorationDef
 from .employees import EmployeeDef, Engineer, MaintenanceWorker, SecurityGuard, Mascot
 from .economy import Economy
 from .ui import Toolbar
@@ -46,6 +47,7 @@ class Game:
         self.employee_defs = {e['id']: EmployeeDef(**e) for e in data.get('employees', [])}
         self.bin_defs = {b['id']: BinDef(**b) for b in data.get('bins', [])}  # Load bin definitions
         self.restroom_defs = {r['id']: RestroomDef(**r) for r in data.get('restrooms', [])}  # Load restroom definitions
+        self.decoration_defs = {d['id']: DecorationDef(**d) for d in data.get('decorations', [])}  # Load decoration definitions
         self.proj_presets = [tuple(p) for p in data.get('projection_presets', [(64,32)])]
         default_proj = tuple(data.get('projection_default', [64,32]))
         default_tilt = float(data.get('tilt_default', 10.0))
@@ -56,7 +58,7 @@ class Game:
         self.starting_hour = time_config.get('starting_hour', 9)
         self.max_visitor_stay_days = time_config.get('max_visitor_stay_days', 10)
 
-        self.rides = []; self.shops = []; self.employees = []; self.restrooms = []
+        self.rides = []; self.shops = []; self.employees = []; self.restrooms = []; self.decorations = []
         # Guests will be spawned at park entrance
         import random
         self.guests = []
@@ -65,7 +67,7 @@ class Game:
         self.renderer = IsoRenderer(self.screen, self.font, default_proj[0], default_proj[1], oblique_tilt=default_tilt)
         self.proj_index = max(0, self.proj_presets.index(default_proj) if default_proj in self.proj_presets else 0)
         self.debug_menu = DebugMenu(self.font, self.proj_presets, self.proj_index, oblique_tilt=default_tilt)
-        self.toolbar = Toolbar(self.font, self.ride_defs, self.shop_defs, self.employee_defs, self.bin_defs, self.restroom_defs)
+        self.toolbar = Toolbar(self.font, self.ride_defs, self.shop_defs, self.employee_defs, self.bin_defs, self.restroom_defs, self.decoration_defs)
         self.dragging=False; self.drag_start=(0,0); self.cam_start=(0,0)
         self.path_dragging=False; self.last_path_pos=None
 
@@ -759,6 +761,16 @@ class Game:
                                                 # Check path connection
                                                 self._check_restroom_path_connection(new_restroom)
                                                 DebugConfig.log('engine', f"Placed {rd.name} at ({place_x}, {place_y})")
+                                elif placing.startswith('deco_'):
+                                    # Handle decoration placement (only on grass)
+                                    dd = self.decoration_defs.get(placing)
+                                    if dd:
+                                        # Decorations are simple 1x1 objects placed only on grass
+                                        if self.grid.get(gx, gy) == TILE_GRASS:
+                                            new_deco = Decoration(dd, gx, gy)
+                                            self.decorations.append(new_deco)
+                                            self.economy.add_expense(dd.cost)
+                                            DebugConfig.log('engine', f"Placed {dd.name} decoration at ({gx}, {gy})")
                                 elif placing.startswith('employee_'):
                                     # Handle employee placement
                                     employee_def = self.employee_defs.get(placing)
@@ -2276,6 +2288,10 @@ class Game:
                 disconnected_sprite = self.sprite('shop_disconnected')  # Reuse shop disconnected sprite
                 disconnected_sprite = pygame.transform.scale(disconnected_sprite, (16, 16))
                 objs.append((disconnected_sprite,(indicator_x,indicator_y)))
+
+        # Render decorations (simple 1x1 sprites)
+        for d in self.decorations:
+            objs.append((self.sprite(d.defn.sprite),(d.x,d.y)))
 
         # Render guests with satisfaction indicators
         for g in self.guests:

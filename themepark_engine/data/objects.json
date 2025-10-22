@@ -163,6 +163,50 @@
       "size": [5, 5],
       "entrance_cost": 0,
       "litter_type": "trash"
+    },
+    {
+      "id": "shop_pizza",
+      "name": "Pizza Stand",
+      "shop_type": "food",
+      "build_cost": 550,
+      "base_price": 5,
+      "sprite": "shops/1F355.png",
+      "size": [3, 3],
+      "entrance_cost": 0,
+      "litter_type": "trash"
+    },
+    {
+      "id": "shop_candy",
+      "name": "Candy Shop",
+      "shop_type": "food",
+      "build_cost": 350,
+      "base_price": 2,
+      "sprite": "shops/1F36D.png",
+      "size": [3, 3],
+      "entrance_cost": 0,
+      "litter_type": "trash"
+    },
+    {
+      "id": "shop_popcorn",
+      "name": "Popcorn Stand",
+      "shop_type": "food",
+      "build_cost": 300,
+      "base_price": 3,
+      "sprite": "shops/1F37F.png",
+      "size": [2, 2],
+      "entrance_cost": 0,
+      "litter_type": "trash"
+    },
+    {
+      "id": "shop_cookies",
+      "name": "Cookie Shop",
+      "shop_type": "food",
+      "build_cost": 400,
+      "base_price": 3,
+      "sprite": "shops/1F36A.png",
+      "size": [3, 3],
+      "entrance_cost": 0,
+      "litter_type": "trash"
     }
   ],
   "employees": [
@@ -244,6 +288,56 @@
       "capacity": 8,
       "sprite": "infrastructure/1F6BB.png",
       "size": [3, 2]
+    }
+  ],
+  "decorations": [
+    {
+      "id": "deco_tree_deciduous",
+      "name": "Deciduous Tree",
+      "cost": 50,
+      "sprite": "decorations/1F333.png",
+      "size": [1, 1],
+      "walkable": false
+    },
+    {
+      "id": "deco_tree_evergreen",
+      "name": "Evergreen Tree",
+      "cost": 50,
+      "sprite": "decorations/1F332.png",
+      "size": [1, 1],
+      "walkable": false
+    },
+    {
+      "id": "deco_sunflower",
+      "name": "Sunflower",
+      "cost": 20,
+      "sprite": "decorations/1F33B.png",
+      "size": [1, 1],
+      "walkable": false
+    },
+    {
+      "id": "deco_hibiscus",
+      "name": "Hibiscus Flower",
+      "cost": 20,
+      "sprite": "decorations/1F33A.png",
+      "size": [1, 1],
+      "walkable": false
+    },
+    {
+      "id": "deco_bench",
+      "name": "Bench",
+      "cost": 100,
+      "sprite": "decorations/1FA91.png",
+      "size": [1, 1],
+      "walkable": false
+    },
+    {
+      "id": "deco_flag",
+      "name": "Flag",
+      "cost": 30,
+      "sprite": "decorations/1F6A9.png",
+      "size": [1, 1],
+      "walkable": false
     }
   ],
   "projection_default": [
