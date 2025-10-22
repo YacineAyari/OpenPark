@@ -67,7 +67,14 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
   - Capacités: 12 à 30 visiteurs
   - Durées variées: 7 à 15 secondes
   - Thrill/Nausea: 0.1 à 0.7 (préférences visiteurs)
-- **Boutiques** (Shops) - 7 types (soda, ice cream, hotdog, fries, restaurant, gift shop)
+- **11 Boutiques variées** (Shops) - Soda, Ice Cream, Hotdog, Fries, Restaurant, Gift Shop, Pizza, Candy, Popcorn, Cookie
+  - Tailles: 2x2 à 5x5
+  - Types: food, drink, souvenir
+  - Prix: $300-$1200
+- **6 Décorations** - Arbres (Deciduous, Evergreen), Fleurs (Sunflower, Hibiscus), Banc, Drapeau
+  - Embellissement visuel du parc
+  - Placement simple sur grass
+  - Coûts: $20-$100
 - **Toilettes** (Restrooms) - 4 tailles (1x1, 2x1, 2x2, 3x2), capacité 2 à 8 visiteurs
 - **Poubelles** - Gestion de la propreté du parc
 - **Queue System V2** - Placement links, flèches directionnelles N/S/E/W, retry intelligent
@@ -157,16 +164,17 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
   - Sérialisation JSON de l'état du parc
   - Load/Save depuis le menu
 
+- [x] **11 Shops variés et système de décorations** ✅
+  - Pizza, Candy, Popcorn (2x2), Cookie shops ajoutés
+  - Système de décorations (arbres, fleurs, bancs, drapeaux)
+  - 6 types de décorations pour embellir le parc
+  - Support shops 2x2+, fleurs réduites pour cohérence visuelle
+
 - [ ] **Améliorer le système économique**
   - Graphiques de revenus/dépenses au fil du temps
   - Équilibrage des coûts et revenus
   - Alertes pour budget bas
   - Objectifs financiers
-
-- [ ] **Ajouter plus de shops variés**
-  - Pizza, burgers, candy, popcorn
-  - Boutiques de souvenirs variées
-  - Stands de jeux/merchandise
 
 #### 🚀 **Priorité MOYENNE (Améliorations majeures)**
 

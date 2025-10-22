@@ -222,22 +222,24 @@
 
 ## Tâches en attente 📋
 
+33. ✅ **Shops variés et système de décorations**
+    - Statut : Complété
+    - Difficulté : 2/5
+    - 11 shops au total (Pizza, Candy, Popcorn, Cookie + existants)
+    - Système de décorations (arbres, fleurs, bancs, drapeaux)
+    - 6 types de décorations pour embellir le parc
+    - Placement simple sur grass, coûts $20-$100
+    - Correction: support shops 2x2, fleurs réduites 50%
+
 ### Haute priorité
 
-33. **Améliorer le système économique**
+34. **Améliorer le système économique**
     - Difficulté : 3/5
     - Graphiques de revenus/dépenses au fil du temps
     - Équilibrage des coûts et revenus
     - Système de prêts ou objectifs financiers
     - Statistiques financières détaillées
     - Alertes pour budget bas
-
-34. **Ajouter plus de shops variés**
-    - Difficulté : 2/5
-    - Pizza, burgers, candy, popcorn
-    - Boutiques de souvenirs variées
-    - Stands de jeux/merchandise
-    - Équilibrage des prix et marges
 
 ### Priorité moyenne
 
@@ -300,7 +302,8 @@
 - ✅ Sélection intelligente des attractions
 - ✅ Mouvement fluide des visiteurs
 - ✅ Toolbar avec icônes et emojis
-- ✅ Shops fonctionnels avec types (food/drink/souvenir)
+- ✅ **11 shops variés** (soda, ice cream, hotdog, fries, restaurant, gift, pizza, candy, popcorn, cookie)
+- ✅ **Système de décorations** (arbres, fleurs, bancs, drapeaux)
 - ✅ Système d'ingénieurs complet avec déplacement fluide
 - ✅ Système de pannes d'attractions
 - ✅ Système d'agents de maintenance complet (nettoyage + tonte)
@@ -328,9 +331,9 @@
 
 ### Prochaines étapes recommandées
 1. Améliorer le système économique (graphiques financiers, équilibrage)
-2. Ajouter plus de shops variés (pizza, candy, merchandise)
-3. Animations des attractions (rotation, mouvement)
-4. Optimiser le pathfinding pour meilleures performances
+2. Animations des attractions (rotation, mouvement)
+3. Optimiser le pathfinding pour meilleures performances
+4. Ajouter plus de décorations (lampes, statues, fontaines)
 
 ### Architecture technique
 
