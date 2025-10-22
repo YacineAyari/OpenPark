@@ -25,20 +25,26 @@ python run.py
 - Place at least 1 engineer, maintenance worker, security guard, or mascot
 - Engineers cost $50/day, others cost $30/day
 
-### Step 3: Wait ~30 Seconds for Day 1 to Complete
-- **IMPORTANT**: Negotiations trigger when **Day 2** starts (after day 1 completes)
+### Step 3: Enable Debug Logging (IMPORTANT!)
+- Press **'D'** to open the debug menu
+- Click to enable **"ENGINE"** logging
+- This will show negotiation trigger messages in the console
+
+### Step 4: Wait ~30 Seconds for Day to Change
+- **IMPORTANT**: Days now change at **00:00** (midnight)
+- Day 1 starts at 09:00, runs until 23:59, then Day 2 starts at 00:00
 - Time passes: **1 day = 30 seconds** real time (accelerated for testing)
-- Watch the HUD: "D1" → "D2" (top left corner)
+- Watch the HUD: "D1 09:00" → "D1 23:59" → "D2 00:00"
 - Optional speed up: Press '2' for 2x (15s/day) or '3' for 3x (10s/day)
 
-### Step 4: Negotiation Modal Appears
-When the modal appears, you'll see:
+### Step 5: Negotiation Modal Appears
+When the modal appears (on Day 2 at 00:00), you'll see:
 - **Employee type** and count
 - **Current salary** vs **demanded salary**
 - **Increase percentage** (15-30%)
 - **Stage** (1st proposal, 2nd, 3rd, strike, or ultimatum)
 
-### Step 5: Test Different Responses
+### Step 6: Test Different Responses
 
 #### Option A: Accept (Green Button)
 - Accepts the demanded salary
@@ -58,7 +64,7 @@ When the modal appears, you'll see:
 - Advances to next stage immediately
 - Triggers efficiency penalties
 
-### Step 6: Test the Stages
+### Step 7: Test the Stages
 
 **Stage 1: First Proposal**
 - No penalties yet
@@ -84,7 +90,7 @@ When the modal appears, you'll see:
 - Last chance to accept
 - Rejection → All employees resign (NOT YET IMPLEMENTED)
 
-### Step 7: Observe Efficiency Penalties
+### Step 8: Observe Efficiency Penalties
 
 **For Engineers:**
 - Break a ride (rides break randomly)
@@ -154,10 +160,21 @@ chance = 1.0
 
 ## Debug Logging
 
-Enable employee debug logs to see negotiation events:
-- Press 'D' to open debug menu
-- Enable "Employees" logging
-- Watch console for negotiation triggers, responses, and penalties
+**CRITICAL FOR TESTING**: Enable debug logs to see what's happening:
+
+1. **Press 'D'** to open debug menu
+2. **Enable "ENGINE"** logging (shows negotiation trigger logic)
+3. **Enable "EMPLOYEES"** logging (optional, shows employee penalties)
+4. Watch the **terminal/console** for messages like:
+   ```
+   DEBUG [engine]: Day changed from 1 to 2, checking negotiations...
+   DEBUG [engine]: Negotiation check: Day 2, Year 1, Profit $-...
+   DEBUG [engine]:   engineer: Found 1 employees
+   DEBUG [engine]:     engineer: current_month=2, required_month=1
+   DEBUG [engine]:     engineer: Wrong month, skipping
+   ```
+
+This will tell you exactly why negotiations are/aren't triggering!
 
 ---
 
