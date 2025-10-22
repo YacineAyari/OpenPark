@@ -66,7 +66,7 @@ class IsoRenderer:
         pygame.draw.polygon(surf, color_rgba, pts_surf)
         pygame.draw.polygon(surf, outline_rgba, pts_surf, 1)
         return surf, (minx - 1, miny - 1)
-    
+
     def _build_arrow(self, direction: str):
         """Build an arrow surface for the given direction"""
         tw, th = self.tile_size()
@@ -175,7 +175,13 @@ class IsoRenderer:
     def _blit_tile(self, surf, off, sx, sy):
         self.screen.blit(surf, (sx + off[0], sy + off[1]))
 
-    def draw_map(self, grid):
+    def draw_map(self, grid, queue_directions=None):
+        """Draw the map grid with optional queue direction arrows
+
+        Args:
+            grid: The map grid to render
+            queue_directions: Optional dict {(x, y): direction_string} for queue tiles
+        """
         coords = [(x,y) for y in range(grid.height) for x in range(grid.width)]
         coords.sort(key=lambda p: self._depth_key(p[0], p[1]))
         for x,y in coords:
@@ -185,7 +191,26 @@ class IsoRenderer:
             elif t==2: self._blit_tile(self.entrance_tile, self.entrance_off, sx, sy)
             elif t==3: self._blit_tile(self.exit_tile, self.exit_off, sx, sy)
             elif t==4: self._blit_tile(self.ride_footprint_tile, self.ride_footprint_off, sx, sy)
-            elif t==5: self._blit_tile(self.queue_tile, self.queue_off, sx, sy)
+            elif t==5:
+                self._blit_tile(self.queue_tile, self.queue_off, sx, sy)
+                # Draw directional arrow if available
+                if queue_directions and (x, y) in queue_directions:
+                    direction = queue_directions[(x, y)]
+                    arrow_surf = None
+                    if direction in ['N', 'NORTH']:
+                        arrow_surf = self.arrow_north
+                    elif direction in ['S', 'SOUTH']:
+                        arrow_surf = self.arrow_south
+                    elif direction in ['E', 'EAST']:
+                        arrow_surf = self.arrow_east
+                    elif direction in ['W', 'WEST']:
+                        arrow_surf = self.arrow_west
+
+                    if arrow_surf:
+                        # Center the arrow on the tile
+                        arrow_x = sx + self.queue_off[0]
+                        arrow_y = sy + self.queue_off[1]
+                        self.screen.blit(arrow_surf, (arrow_x, arrow_y))
             elif t==6: self._blit_tile(self.shop_entrance_tile, self.shop_entrance_off, sx, sy)
             elif t==7: self._blit_tile(self.shop_footprint_tile, self.shop_footprint_off, sx, sy)
             elif t==8: self._blit_tile(self.park_entrance_tile, self.park_entrance_off, sx, sy)
