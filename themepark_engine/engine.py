@@ -56,7 +56,9 @@ class Game:
 
         # Load time system configuration
         time_config = data.get('time_system', {})
-        self.day_duration_real_minutes = time_config.get('day_duration_minutes', 12.0)
+        # TESTING MODE: 1 day = 0.5 minutes (30 seconds) for fast testing
+        # TODO: Restore to time_config.get('day_duration_minutes', 12.0) for production
+        self.day_duration_real_minutes = 0.5  # TESTING: was 12.0
         self.starting_hour = time_config.get('starting_hour', 9)
         self.max_visitor_stay_days = time_config.get('max_visitor_stay_days', 10)
 

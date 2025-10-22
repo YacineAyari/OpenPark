@@ -68,7 +68,8 @@ class SalaryNegotiationManager:
         """
 
         # Get current month (1 day = 1 month, 12 days = 1 year)
-        current_month = (current_day % 12) + 1
+        # Day 1 = Month 1, Day 2 = Month 2, ..., Day 12 = Month 12, Day 13 = Month 1 again
+        current_month = ((current_day - 1) % 12) + 1
 
         # Check if it's the right month for this type
         if current_month != self.negotiation_months.get(employee_type, 0):

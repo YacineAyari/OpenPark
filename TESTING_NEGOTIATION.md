@@ -5,9 +5,13 @@
 The negotiation system has been temporarily configured for easy testing:
 
 ### Changes Made for Testing:
-1. **Negotiation trigger probability**: Set to 100% (was 10%-90% based on profit)
-2. **Negotiation months**: All employee types trigger on Month 1/Day 1 (was staggered: months 3, 6, 9, 12)
-3. **Location in code**: `themepark_engine/salary_negotiation.py` lines 49-53 and 92-94
+1. **Time acceleration**: 1 day = 30 seconds real time (was 12 minutes)
+2. **Negotiation trigger probability**: Set to 100% (was 10%-90% based on profit)
+3. **Negotiation months**: All employee types trigger on Month 1/Day 1 (was staggered: months 3, 6, 9, 12)
+4. **Location in code**:
+   - `engine.py` line 61: day_duration_real_minutes = 0.5
+   - `salary_negotiation.py` lines 49-53: negotiation_months
+   - `salary_negotiation.py` lines 92-94: 100% trigger chance
 
 ## How to Test
 
@@ -21,10 +25,11 @@ python run.py
 - Place at least 1 engineer, maintenance worker, security guard, or mascot
 - Engineers cost $50/day, others cost $30/day
 
-### Step 3: Wait for Day 1 / Month 1
-- Negotiations trigger on day 1 (month 1)
-- Time passes: 1 day = 12 in-game minutes by default
-- Speed up time: Press '2' for 2x speed, or '3' for 3x speed
+### Step 3: Wait ~30 Seconds for Day 1 to Complete
+- **IMPORTANT**: Negotiations trigger when **Day 2** starts (after day 1 completes)
+- Time passes: **1 day = 30 seconds** real time (accelerated for testing)
+- Watch the HUD: "D1" → "D2" (top left corner)
+- Optional speed up: Press '2' for 2x (15s/day) or '3' for 3x (10s/day)
 
 ### Step 4: Negotiation Modal Appears
 When the modal appears, you'll see:
@@ -115,8 +120,15 @@ When the modal appears, you'll see:
 
 ## Cleanup After Testing
 
-**IMPORTANT**: Before production release, restore original values in `salary_negotiation.py`:
+**IMPORTANT**: Before production release, restore original values:
 
+### In `engine.py` (line 59-61):
+```python
+# Restore normal time speed
+self.day_duration_real_minutes = time_config.get('day_duration_minutes', 12.0)
+```
+
+### In `salary_negotiation.py`:
 ```python
 # Line 48-53: Restore negotiation months
 self.negotiation_months = {
