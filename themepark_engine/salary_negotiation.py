@@ -42,11 +42,14 @@ class SalaryNegotiationManager:
         self.negotiation_history: List[Dict] = []
 
         # Calendar: which month each employee type negotiates
+        # TESTING MODE: All types negotiate on day 1 (month 1) for easy testing
+        # TODO: Restore to original values for production
+        # Original: engineer=3, maintenance=6, security=9, mascot=12
         self.negotiation_months = {
-            'engineer': 3,      # Month 3
-            'maintenance': 6,   # Month 6
-            'security': 9,      # Month 9
-            'mascot': 12        # Month 12
+            'engineer': 1,      # TESTING: Month 1 (was Month 3)
+            'maintenance': 1,   # TESTING: Month 1 (was Month 6)
+            'security': 1,      # TESTING: Month 1 (was Month 9)
+            'mascot': 1         # TESTING: Month 1 (was Month 12)
         }
 
         # Last negotiation year for each type
@@ -59,10 +62,13 @@ class SalaryNegotiationManager:
 
     def should_trigger_negotiation(self, employee_type: str, current_day: int,
                                    current_year: int, park_profit: float) -> bool:
-        """Determine if a negotiation should be triggered for this employee type"""
+        """Determine if a negotiation should be triggered for this employee type
 
-        # Get current month (assuming 30 days per month)
-        current_month = (current_day % 360) // 30 + 1
+        Time system: 1 year = 12 days, 1 month = 1 day
+        """
+
+        # Get current month (1 day = 1 month, 12 days = 1 year)
+        current_month = (current_day % 12) + 1
 
         # Check if it's the right month for this type
         if current_month != self.negotiation_months.get(employee_type, 0):
@@ -86,11 +92,18 @@ class SalaryNegotiationManager:
         else:
             chance = 0.1  # Losing money = very rare demands
 
+        # TESTING MODE: Force 100% chance for easy testing
+        # TODO: Remove this for production
+        chance = 1.0
+
         return random.random() < chance
 
     def start_negotiation(self, employee_type: str, affected_employees: List[int],
                          current_salary: int, current_year: int, current_day: int) -> NegotiationState:
-        """Start a new salary negotiation for an employee type"""
+        """Start a new salary negotiation for an employee type
+
+        Time system: Next stage in 1 day (= 1 month in-game)
+        """
 
         # Calculate demanded salary (15% to 30% increase)
         base_increase = 0.15
@@ -105,7 +118,7 @@ class SalaryNegotiationManager:
             current_salary=current_salary,
             demanded_salary=demanded_salary,
             player_counter_offer=0,
-            next_negotiation_day=current_day + 30,  # Next stage in 1 month
+            next_negotiation_day=current_day + 1,  # Next stage in 1 day (= 1 month)
             strike_start_day=0,
             efficiency_penalty=0.0,
             negotiation_start_year=current_year
@@ -142,32 +155,35 @@ class SalaryNegotiationManager:
 
     def _advance_to_next_stage(self, negotiation: NegotiationState,
                                current_day: int) -> tuple[bool, str]:
-        """Advance negotiation to next stage after rejection"""
+        """Advance negotiation to next stage after rejection
+
+        Time system: 1 day = 1 month, except final ultimatum (same day decision)
+        """
 
         if negotiation.current_stage == NegotiationStage.FIRST_PROPOSAL:
             negotiation.current_stage = NegotiationStage.SECOND_PROPOSAL
             negotiation.efficiency_penalty = 0.35
-            negotiation.next_negotiation_day = current_day + 30
-            return False, "Offer rejected. Employees working at -35% efficiency. Next negotiation in 1 month."
+            negotiation.next_negotiation_day = current_day + 1  # 1 day = 1 month
+            return False, "Offer rejected. Employees working at -35% efficiency. Next negotiation in 1 day."
 
         elif negotiation.current_stage == NegotiationStage.SECOND_PROPOSAL:
             negotiation.current_stage = NegotiationStage.THIRD_PROPOSAL
             negotiation.efficiency_penalty = 0.75
-            negotiation.next_negotiation_day = current_day + 30
-            return False, "Offer rejected. Employees working at -75% efficiency. Next negotiation in 1 month."
+            negotiation.next_negotiation_day = current_day + 1  # 1 day = 1 month
+            return False, "Offer rejected. Employees working at -75% efficiency. Next negotiation in 1 day."
 
         elif negotiation.current_stage == NegotiationStage.THIRD_PROPOSAL:
             negotiation.current_stage = NegotiationStage.STRIKE
             negotiation.efficiency_penalty = 1.0
             negotiation.strike_start_day = current_day
-            negotiation.next_negotiation_day = current_day + 30
-            return False, "Offer rejected. Employees ON STRIKE for 1 month! (0% efficiency)"
+            negotiation.next_negotiation_day = current_day + 1  # Strike lasts 1 day = 1 month
+            return False, "Offer rejected. Employees ON STRIKE for 1 day! (0% efficiency)"
 
         elif negotiation.current_stage == NegotiationStage.STRIKE:
             # Strike ended, final ultimatum
             negotiation.current_stage = NegotiationStage.FINAL_ULTIMATUM
-            negotiation.next_negotiation_day = current_day + 7  # 7 days for final decision
-            return False, "Final ultimatum! Accept in 7 days or all employees resign."
+            negotiation.next_negotiation_day = current_day  # Immediate decision required
+            return False, "Final ultimatum! Accept NOW or all employees resign."
 
         elif negotiation.current_stage == NegotiationStage.FINAL_ULTIMATUM:
             # Resignation!
