@@ -28,8 +28,12 @@ class NegotiationState:
     current_salary: int                   # Current daily salary
     demanded_salary: int                  # Salary demanded by employees
     player_counter_offer: int             # Player's counter-offer (0 = none yet)
-    next_negotiation_day: int             # Game day for next negotiation step
-    strike_start_day: int                 # Day strike started (0 = not on strike)
+    next_negotiation_year: int            # Year for next negotiation step
+    next_negotiation_month: int           # Month for next negotiation step (1-12)
+    next_negotiation_day: int             # Day for next negotiation step (1-31)
+    strike_start_year: int                # Year strike started (0 = not on strike)
+    strike_start_month: int               # Month strike started
+    strike_start_day: int                 # Day strike started
     efficiency_penalty: float             # Current efficiency penalty (0.0 to 1.0)
     negotiation_start_year: int           # Year when negotiation started
 
@@ -42,14 +46,12 @@ class SalaryNegotiationManager:
         self.negotiation_history: List[Dict] = []
 
         # Calendar: which month each employee type negotiates
-        # TESTING MODE: All types negotiate on day 1 (month 1) for easy testing
-        # TODO: Restore to original values for production
-        # Original: engineer=3, maintenance=6, security=9, mascot=12
+        # Production mode: staggered negotiation months throughout the year
         self.negotiation_months = {
-            'engineer': 1,      # TESTING: Month 1 (was Month 3)
-            'maintenance': 1,   # TESTING: Month 1 (was Month 6)
-            'security': 1,      # TESTING: Month 1 (was Month 9)
-            'mascot': 1         # TESTING: Month 1 (was Month 12)
+            'engineer': 3,      # Month 3 (March)
+            'maintenance': 6,   # Month 6 (June)
+            'security': 9,      # Month 9 (September)
+            'mascot': 12        # Month 12 (December)
         }
 
         # Last negotiation year for each type
@@ -101,23 +103,32 @@ class SalaryNegotiationManager:
         else:
             chance = 0.1  # Losing money = very rare demands
 
-        # TESTING MODE: Force 100% chance for easy testing
-        # TODO: Remove this for production
-        chance = 1.0
-
+        # Production mode: probability based on park profit
         return random.random() < chance
 
     def start_negotiation(self, employee_type: str, affected_employees: List[int],
-                         current_salary: int, current_year: int, current_day: int) -> NegotiationState:
+                         current_salary: int, year: int, month: int, day: int) -> NegotiationState:
         """Start a new salary negotiation for an employee type
 
-        Time system: Next stage in 1 day (= 1 month in-game)
+        New calendar system: Next stage in 1 day (24 hours real time in game)
         """
 
         # Calculate demanded salary (15% to 30% increase)
         base_increase = 0.15
         variable_increase = random.uniform(0.0, 0.15)
         demanded_salary = int(current_salary * (1 + base_increase + variable_increase))
+
+        # Calculate next negotiation date (1 day later)
+        next_day = day + 1
+        next_month = month
+        next_year = year
+        DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+        if next_day > DAYS_IN_MONTH[month - 1]:
+            next_day = 1
+            next_month += 1
+            if next_month > 12:
+                next_month = 1
+                next_year += 1
 
         # Create negotiation state
         negotiation = NegotiationState(
@@ -127,79 +138,137 @@ class SalaryNegotiationManager:
             current_salary=current_salary,
             demanded_salary=demanded_salary,
             player_counter_offer=0,
-            next_negotiation_day=current_day + 1,  # Next stage in 1 day (= 1 month)
+            next_negotiation_year=next_year,
+            next_negotiation_month=next_month,
+            next_negotiation_day=next_day,
+            strike_start_year=0,
+            strike_start_month=0,
             strike_start_day=0,
             efficiency_penalty=0.0,
-            negotiation_start_year=current_year
+            negotiation_start_year=year
         )
 
         self.active_negotiations[employee_type] = negotiation
-        self.last_negotiation_year[employee_type] = current_year
+        self.last_negotiation_year[employee_type] = year
 
         return negotiation
 
     def process_negotiation_response(self, employee_type: str, player_offer: int,
-                                    current_day: int) -> tuple[bool, str]:
+                                    year: int, month: int, day: int) -> tuple[bool, str, bool]:
         """
         Process player's response to a negotiation.
 
-        Returns: (accepted, message)
+        Args:
+            employee_type: Type of employee ('engineer', 'maintenance', etc.)
+            player_offer: Salary offered by player
+            year: Current game year
+            month: Current game month (1-12)
+            day: Current game day (1-31)
+
+        Returns: (accepted, message, resigned)
+        - accepted: True if negotiation was accepted
+        - message: Status message
+        - resigned: True if employees resigned (failed final ultimatum)
         """
         if employee_type not in self.active_negotiations:
-            return False, "No active negotiation"
+            return False, "No active negotiation", False
 
         negotiation = self.active_negotiations[employee_type]
         negotiation.player_counter_offer = player_offer
 
-        # Calculate acceptance threshold (80% of demanded salary)
-        acceptance_threshold = negotiation.demanded_salary * 0.8
+        # Calculate acceptance threshold (50% of the demanded INCREASE, not the total salary)
+        # Example: Current $50, Demanded $63 (+$13) → Threshold = $50 + ($13 × 0.5) = $56.5
+        demanded_increase = negotiation.demanded_salary - negotiation.current_salary
+        min_acceptable_increase = demanded_increase * 0.5
+        acceptance_threshold = negotiation.current_salary + min_acceptable_increase
 
         if player_offer >= acceptance_threshold:
-            # Accepted! Update salary and end negotiation
+            # Above threshold - automatically accepted!
             self._end_negotiation(employee_type, accepted=True, new_salary=player_offer)
-            return True, f"Negotiation accepted! New salary: ${player_offer}/day"
+            return True, f"Negotiation accepted! New salary: ${player_offer}/day", False
         else:
-            # Rejected! Move to next stage
-            return self._advance_to_next_stage(negotiation, current_day)
+            # Below threshold - 20% chance of acceptance anyway
+            luck_roll = random.random()
+            if luck_roll < 0.20:
+                # Lucky! They accepted even though it was below threshold
+                from .debug import DebugConfig
+                DebugConfig.log('engine', f"Lucky acceptance! Offer ${player_offer} was below threshold ${int(acceptance_threshold)}, but accepted anyway (roll: {luck_roll:.2f})")
+                self._end_negotiation(employee_type, accepted=True, new_salary=player_offer)
+                return True, f"Negotiation accepted! (Lucky!) New salary: ${player_offer}/day", False
+            else:
+                # Rejected! Move to next stage
+                return self._advance_to_next_stage(negotiation, year, month, day)
 
     def _advance_to_next_stage(self, negotiation: NegotiationState,
-                               current_day: int) -> tuple[bool, str]:
+                               year: int, month: int, day: int) -> tuple[bool, str, bool]:
         """Advance negotiation to next stage after rejection
 
-        Time system: 1 day = 1 month, except final ultimatum (same day decision)
+        Calendar system: Next stage in 1 day (12 real minutes), except final ultimatum (immediate)
+
+        Args:
+            negotiation: Current negotiation state
+            year: Current game year
+            month: Current game month (1-12)
+            day: Current game day (1-31)
+
+        Returns: (accepted, message, resigned)
         """
+
+        # Calculate next day (1 day later in calendar)
+        DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+        next_day = day + 1
+        next_month = month
+        next_year = year
+
+        if next_day > DAYS_IN_MONTH[month - 1]:
+            next_day = 1
+            next_month += 1
+            if next_month > 12:
+                next_month = 1
+                next_year += 1
 
         if negotiation.current_stage == NegotiationStage.FIRST_PROPOSAL:
             negotiation.current_stage = NegotiationStage.SECOND_PROPOSAL
             negotiation.efficiency_penalty = 0.35
-            negotiation.next_negotiation_day = current_day + 1  # 1 day = 1 month
-            return False, "Offer rejected. Employees working at -35% efficiency. Next negotiation in 1 day."
+            negotiation.next_negotiation_year = next_year
+            negotiation.next_negotiation_month = next_month
+            negotiation.next_negotiation_day = next_day
+            return False, "Offer rejected. Employees working at -35% efficiency. Next negotiation in 1 day.", False
 
         elif negotiation.current_stage == NegotiationStage.SECOND_PROPOSAL:
             negotiation.current_stage = NegotiationStage.THIRD_PROPOSAL
             negotiation.efficiency_penalty = 0.75
-            negotiation.next_negotiation_day = current_day + 1  # 1 day = 1 month
-            return False, "Offer rejected. Employees working at -75% efficiency. Next negotiation in 1 day."
+            negotiation.next_negotiation_year = next_year
+            negotiation.next_negotiation_month = next_month
+            negotiation.next_negotiation_day = next_day
+            return False, "Offer rejected. Employees working at -75% efficiency. Next negotiation in 1 day.", False
 
         elif negotiation.current_stage == NegotiationStage.THIRD_PROPOSAL:
             negotiation.current_stage = NegotiationStage.STRIKE
             negotiation.efficiency_penalty = 1.0
-            negotiation.strike_start_day = current_day
-            negotiation.next_negotiation_day = current_day + 1  # Strike lasts 1 day = 1 month
-            return False, "Offer rejected. Employees ON STRIKE for 1 day! (0% efficiency)"
+            negotiation.strike_start_year = year
+            negotiation.strike_start_month = month
+            negotiation.strike_start_day = day
+            negotiation.next_negotiation_year = next_year
+            negotiation.next_negotiation_month = next_month
+            negotiation.next_negotiation_day = next_day
+            return False, "Offer rejected. Employees ON STRIKE for 1 day! (0% efficiency)", False
 
         elif negotiation.current_stage == NegotiationStage.STRIKE:
             # Strike ended, final ultimatum
             negotiation.current_stage = NegotiationStage.FINAL_ULTIMATUM
-            negotiation.next_negotiation_day = current_day  # Immediate decision required
-            return False, "Final ultimatum! Accept NOW or all employees resign."
+            # Immediate decision - use current date
+            negotiation.next_negotiation_year = year
+            negotiation.next_negotiation_month = month
+            negotiation.next_negotiation_day = day
+            return False, "Final ultimatum! Accept NOW or all employees resign.", False
 
         elif negotiation.current_stage == NegotiationStage.FINAL_ULTIMATUM:
             # Resignation!
             self._end_negotiation(negotiation.employee_type, accepted=False, new_salary=0)
-            return False, f"ALL {negotiation.employee_type}s have RESIGNED! You must hire new employees."
+            return False, f"ALL {negotiation.employee_type}s have RESIGNED! You must hire new employees.", True
 
-        return False, "Unknown stage"
+        return False, "Unknown stage", False
 
     def _end_negotiation(self, employee_type: str, accepted: bool, new_salary: int):
         """End a negotiation (either accepted or failed)"""

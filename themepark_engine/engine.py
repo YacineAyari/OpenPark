@@ -56,10 +56,9 @@ class Game:
 
         # Load time system configuration
         time_config = data.get('time_system', {})
-        # TESTING MODE: 1 day = 0.5 minutes (30 seconds) for fast testing
-        # TODO: Restore to time_config.get('day_duration_minutes', 12.0) for production
-        self.day_duration_real_minutes = 0.5  # TESTING: was 12.0
-        self.starting_hour = time_config.get('starting_hour', 9)
+        # Time system configuration (no longer used - kept for backwards compatibility)
+        # New system uses MONTH_DURATION_MINUTES instead
+        self.day_duration_real_minutes = time_config.get('day_duration_minutes', 12.0)  # Deprecated
         self.max_visitor_stay_days = time_config.get('max_visitor_stay_days', 10)
 
         self.rides = []; self.shops = []; self.employees = []; self.restrooms = []; self.decorations = []
@@ -107,12 +106,21 @@ class Game:
         self.guests_entered = 0  # Track total guests entered
         self.guests_left = 0  # Track total guests who left
 
-        # Time system
-        self.game_time = 0.0  # Game time in seconds (in-game)
+        # Time system - Calendar based (months, days, years)
+        self.game_time = 0.0  # Game time in seconds (elapsed since game start)
         self.game_speed = 1.0  # Current game speed (0=paused, 1=normal, 2=fast, 3=very fast)
-        self.game_day = 1  # Current day
-        self.game_hour = self.starting_hour  # Current hour (0-23)
-        self.game_minute = 0  # Current minute (0-59)
+        self.game_speed_before_modal = None  # Saved game speed before modal pause
+
+        # Calendar constants
+        self.DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]  # Jan-Dec
+        self.MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        self.STARTING_YEAR = 2025
+        self.MONTH_DURATION_MINUTES = 12.0  # 1 month = 12 real minutes
+
+        # Current date
+        self.game_year = self.STARTING_YEAR  # Current year (starts at 2025)
+        self.game_month = 1  # Current month (1-12, starts at January)
+        self.game_day = 1  # Current day of month (1-31 depending on month)
 
         # Park open/close system
         self.park_open = False  # Park starts closed, player opens with 'O' key
@@ -1180,22 +1188,30 @@ class Game:
             game_dt = dt * seconds_per_real_second
             self.game_time += game_dt
 
-            # Calculate current day, hour, minute
+            # Calculate current date (month, day, year)
             total_seconds = self.game_time
-            total_minutes = int(total_seconds / 60)
-            total_hours = total_minutes / 60
+            total_minutes = total_seconds / 60.0
 
-            # Calculate absolute hour (starting from starting_hour on day 1)
-            absolute_hour = self.starting_hour + total_hours
+            # Calculate total months elapsed since game start (as a float with fractional part)
+            total_months_elapsed = total_minutes / self.MONTH_DURATION_MINUTES
 
-            # Calculate day based on absolute hour (day changes at 00:00)
-            # Day 1 starts at starting_hour, then continues until hour 24, then day 2 starts at hour 0
-            # Formula: days elapsed = floor(absolute_hour / 24), then add 1 for day 1
-            self.game_day = int(absolute_hour / 24) + 1
+            # Calculate year and month
+            years_elapsed = int(total_months_elapsed / 12)
+            self.game_year = self.STARTING_YEAR + years_elapsed
 
-            # Calculate current hour and minute
-            self.game_hour = int(absolute_hour % 24)
-            self.game_minute = total_minutes % 60
+            months_this_year = total_months_elapsed % 12  # 0.0 to 11.999...
+            self.game_month = int(months_this_year) + 1  # 1-12
+
+            # Calculate day within the current month
+            # Extract the fractional part (progress through current month)
+            fraction_of_month = months_this_year - int(months_this_year)  # 0.0 to 0.999...
+            days_in_current_month = self.DAYS_IN_MONTH[self.game_month - 1]
+
+            # Map fraction to day (1 to days_in_month)
+            self.game_day = int(fraction_of_month * days_in_current_month) + 1
+
+            # Ensure day stays in valid range
+            self.game_day = min(self.game_day, days_in_current_month)
 
         # Handle park closure evacuation
         if self.park_just_closed:
@@ -1268,6 +1284,7 @@ class Game:
                 g.apply_bin_use_bonus()
         
         # Update employees
+        employees_to_remove = []
         for employee in self.employees:
             employee.tick(scaled_dt)
             # Pay salary every hour (3600 seconds)
@@ -1275,7 +1292,16 @@ class Game:
                 self.economy.cash -= employee.defn.salary
                 employee.salary_timer = 0.0
                 DebugConfig.log('engine', f"Paid salary to {employee.defn.name}: ${employee.defn.salary}")
-        
+
+            # Check if employee has left the park
+            if employee.state == "leaving" and not employee.path and not employee.is_moving:
+                employees_to_remove.append(employee)
+                DebugConfig.log('engine', f"Employee {employee.id} ({employee.defn.type}) left the park")
+
+        # Remove employees who have left
+        for employee in employees_to_remove:
+            self.employees.remove(employee)
+
         # Assign maintenance workers to litter and gardening
         self._assign_maintenance_workers_to_litter()
         self._assign_maintenance_workers_to_gardening()
@@ -1309,15 +1335,10 @@ class Game:
         # Handle broken rides - evacuate queues
         self._handle_broken_rides()
 
-        # Check for salary negotiations (once per day)
-        if hasattr(self, '_last_negotiation_check_day'):
-            if self.game_day != self._last_negotiation_check_day:
-                DebugConfig.log('engine', f"Day changed from {self._last_negotiation_check_day} to {self.game_day}, checking negotiations...")
-                self._check_and_trigger_salary_negotiations()
-                self._last_negotiation_check_day = self.game_day
-        else:
-            self._last_negotiation_check_day = self.game_day
-            DebugConfig.log('engine', f"First negotiation check initialized on day {self.game_day}")
+        # Check for salary negotiations (once per year in March)
+        # Only check during March to avoid unnecessary processing
+        if self.game_month == 3:  # March
+            self._check_and_trigger_salary_negotiations()
         
         # Debug: Check for stuck visitors in rides
         for ride in self.rides:
@@ -2071,11 +2092,13 @@ class Game:
         x_offset += 15
 
         # Time
-        self._draw_hud_icon('calendar', x_offset, icon_y, "Time - Current day and time")
+        self._draw_hud_icon('calendar', x_offset, icon_y, "Date - Current in-game date")
         x_offset += 34
-        time_text = f"D{self.game_day} {self.game_hour:02d}:{self.game_minute:02d}"
-        self.screen.blit(self.font.render(time_text, True, (200, 220, 255)), (x_offset, y))
-        x_offset += 95
+        # Display date as "Jan 15, 2025"
+        month_name = self.MONTH_NAMES[self.game_month - 1]
+        date_text = f"{month_name} {self.game_day}, {self.game_year}"
+        self.screen.blit(self.font.render(date_text, True, (200, 220, 255)), (x_offset, y))
+        x_offset += 110  # Increased width for longer date format
 
         # Park status
         park_icon_name = 'open' if self.park_open else 'closed'
@@ -2823,57 +2846,121 @@ class Game:
                 DebugConfig.log('engine', f"Mascot {mascot.id} boosted excitement for {len(mascot.nearby_guests)} guests")
 
     def _check_and_trigger_salary_negotiations(self):
-        """Check if any employee type should start salary negotiations
+        """Check if salary negotiations should trigger (once per year in March)
 
-        Time system: 1 year = 12 days, so negotiations can happen every 12 days
+        New system:
+        - Negotiations happen once per year in March
+        - Only ONE employee type negotiates per year
+        - Selection is weighted by number of employees (more employees = more likely)
         """
-        # Calculate current year (12 days per year)
-        current_year = (self.game_day // 12) + 1
-
         # Calculate park profit (simple: recent income - expenses)
         park_profit = self.economy.cash - 10000  # Rough estimate based on starting cash
 
-        DebugConfig.log('engine', f"Negotiation check: Day {self.game_day}, Year {current_year}, Profit ${park_profit}")
+        DebugConfig.log('engine', f"Negotiation check: {self.MONTH_NAMES[self.game_month-1]} {self.game_day}, {self.game_year}, Profit ${park_profit}")
 
-        # Check each employee type
+        # FIRST: Check for ongoing negotiations that need to resume on next day
         for employee_type in ['engineer', 'maintenance', 'security', 'mascot']:
-            # Get employees of this type
-            employees_of_type = [emp for emp in self.employees if emp.defn.type == employee_type]
+            negotiation = self.salary_negotiation_manager.get_active_negotiation(employee_type)
+            if negotiation:
+                # Check if it's time to resume (next_negotiation_month/day reached)
+                if (self.game_year > negotiation.next_negotiation_year or
+                    (self.game_year == negotiation.next_negotiation_year and
+                     self.game_month > negotiation.next_negotiation_month) or
+                    (self.game_year == negotiation.next_negotiation_year and
+                     self.game_month == negotiation.next_negotiation_month and
+                     self.game_day >= negotiation.next_negotiation_day)):
+                    # Time to show the next stage of negotiation
+                    employees_of_type = [emp for emp in self.employees if emp.defn.type == employee_type]
+                    if employees_of_type:
+                        self._show_negotiation_modal(negotiation, employee_type, len(employees_of_type))
+                        DebugConfig.log('engine', f"Resuming negotiation for {employee_type}s at stage {negotiation.current_stage.name}")
+                return  # Only one negotiation at a time
 
-            if not employees_of_type:
-                DebugConfig.log('engine', f"  {employee_type}: No employees, skipping")
-                continue  # No employees of this type
+        # SECOND: Check if we should trigger a NEW negotiation (March only, once per year)
+        if self.game_month != 3:  # Not March
+            return
 
-            DebugConfig.log('engine', f"  {employee_type}: Found {len(employees_of_type)} employees")
+        # Check if we already negotiated this year
+        if not hasattr(self, '_last_negotiation_year'):
+            self._last_negotiation_year = 0
 
-            # Check if we should trigger negotiation
-            should_trigger = self.salary_negotiation_manager.should_trigger_negotiation(
-                employee_type,
-                self.game_day,
-                current_year,
-                park_profit
-            )
+        if self._last_negotiation_year >= self.game_year:
+            return  # Already negotiated this year
 
-            DebugConfig.log('engine', f"  {employee_type}: should_trigger = {should_trigger}")
+        # Count employees by type
+        employee_counts = {
+            'engineer': len([e for e in self.employees if e.defn.type == 'engineer']),
+            'maintenance': len([e for e in self.employees if e.defn.type == 'maintenance']),
+            'security': len([e for e in self.employees if e.defn.type == 'security']),
+            'mascot': len([e for e in self.employees if e.defn.type == 'mascot'])
+        }
 
-            if should_trigger:
-                # Get IDs of affected employees (those currently employed)
-                affected_ids = [id(emp) for emp in employees_of_type]
-                current_salary = employees_of_type[0].defn.salary
+        total_employees = sum(employee_counts.values())
+        if total_employees == 0:
+            DebugConfig.log('engine', "No employees to negotiate")
+            return
 
-                # Start negotiation
-                negotiation = self.salary_negotiation_manager.start_negotiation(
-                    employee_type,
-                    affected_ids,
-                    current_salary,
-                    current_year,
-                    self.game_day
-                )
+        # Weighted random selection based on employee counts
+        import random
+        weighted_list = []
+        for emp_type, count in employee_counts.items():
+            weighted_list.extend([emp_type] * count)
 
-                # Show negotiation modal
-                self.negotiation_modal.show(negotiation, employee_type, len(employees_of_type))
+        selected_type = random.choice(weighted_list)
+        DebugConfig.log('engine', f"Selected {selected_type} for negotiation (out of {total_employees} total employees)")
 
-                DebugConfig.log('engine', f"Started salary negotiation for {employee_type}s: ${negotiation.current_salary} -> ${negotiation.demanded_salary}")
+        # Check profit-based probability
+        if park_profit > 10000:
+            chance = 0.9
+        elif park_profit > 5000:
+            chance = 0.6
+        elif park_profit > 0:
+            chance = 0.3
+        else:
+            chance = 0.1
+
+        if random.random() >= chance:
+            DebugConfig.log('engine', f"Negotiation chance failed ({chance*100:.0f}% chance)")
+            return
+
+        # Start negotiation for selected type
+        employees_of_type = [emp for emp in self.employees if emp.defn.type == selected_type]
+        affected_ids = [id(emp) for emp in employees_of_type]
+        current_salary = employees_of_type[0].defn.salary
+
+        negotiation = self.salary_negotiation_manager.start_negotiation(
+            selected_type,
+            affected_ids,
+            current_salary,
+            self.game_year,
+            self.game_month,
+            self.game_day
+        )
+
+        self._show_negotiation_modal(negotiation, selected_type, len(employees_of_type))
+        self._last_negotiation_year = self.game_year
+
+        DebugConfig.log('engine', f"Started negotiation for {selected_type}s: ${negotiation.current_salary} -> ${negotiation.demanded_salary}")
+
+    def _show_negotiation_modal(self, negotiation, employee_type, employee_count):
+        """Show negotiation modal and pause the game"""
+        # Save current game speed and pause
+        if self.game_speed_before_modal is None:
+            self.game_speed_before_modal = self.game_speed
+            self.game_speed = 0  # Pause
+            DebugConfig.log('engine', f"Game paused for negotiation (was at speed {self.game_speed_before_modal})")
+
+        self.negotiation_modal.show(negotiation, employee_type, employee_count)
+
+    def _hide_negotiation_modal(self):
+        """Hide negotiation modal and resume the game"""
+        self.negotiation_modal.hide()
+
+        # Restore game speed
+        if self.game_speed_before_modal is not None:
+            self.game_speed = self.game_speed_before_modal
+            self.game_speed_before_modal = None
+            DebugConfig.log('engine', f"Game resumed at speed {self.game_speed}")
 
     def _handle_negotiation_response(self, player_offer, accept=False):
         """Handle player's response to salary negotiation"""
@@ -2887,9 +2974,11 @@ class Game:
             player_offer = self.negotiation_modal.negotiation.demanded_salary
 
         # Process the response
-        accepted, message = self.salary_negotiation_manager.process_negotiation_response(
+        accepted, message, resigned = self.salary_negotiation_manager.process_negotiation_response(
             employee_type,
             player_offer,
+            self.game_year,
+            self.game_month,
             self.game_day
         )
 
@@ -2902,16 +2991,52 @@ class Game:
                 emp.defn.salary = player_offer
             DebugConfig.log('engine', f"Updated {len(employees_of_type)} {employee_type}s to salary ${player_offer}/day")
 
-            # Hide modal
-            self.negotiation_modal.hide()
+            # Hide modal and resume game
+            self._hide_negotiation_modal()
+        elif resigned:
+            # Employees resigned - make them walk to park entrance
+            employees_of_type = [emp for emp in self.employees if emp.defn.type == employee_type]
+            removed_count = len(employees_of_type)
+
+            # Set employees to "leaving" state and pathfind to entrance
+            from .pathfinding import astar_for_engineers
+            for emp in employees_of_type:
+                emp.state = "leaving"
+                emp.target_object = None
+                emp.work_timer = 0.0
+
+                # Pathfind to park entrance
+                emp_pos = (int(emp.x), int(emp.y))
+                path = astar_for_engineers(self.grid, emp_pos, self.park_entrance)
+
+                if path:
+                    emp.path = path
+                    DebugConfig.log('engine', f"Employee {emp.id} ({employee_type}) is leaving the park (path length: {len(path)})")
+                else:
+                    # No path found - teleport to entrance
+                    emp.x, emp.y = self.park_entrance
+                    emp.path = []
+                    DebugConfig.log('engine', f"Employee {emp.id} ({employee_type}) teleported to entrance (no path found)")
+
+            DebugConfig.log('engine', f"RESIGNATION: {removed_count} {employee_type}s are leaving the park")
+
+            # Hide modal and resume game
+            self._hide_negotiation_modal()
         else:
-            # Negotiation continues to next stage
-            # Get updated negotiation state
+            # Negotiation rejected - check if we need to reopen immediately
             negotiation = self.salary_negotiation_manager.get_active_negotiation(employee_type)
-            if negotiation:
-                # Update modal with new stage
+            if negotiation and negotiation.next_negotiation_day == self.game_day:
+                # Immediate decision required (FINAL_ULTIMATUM case)
+                # Reopen modal right away (game stays paused)
                 employees_of_type = [emp for emp in self.employees if emp.defn.type == employee_type]
-                self.negotiation_modal.show(negotiation, employee_type, len(employees_of_type))
+                if employees_of_type:
+                    self.negotiation_modal.show(negotiation, employee_type, len(employees_of_type))
+                    DebugConfig.log('engine', f"IMMEDIATE: Reopening modal for {employee_type}s at stage {negotiation.current_stage.name}")
+            else:
+                # Hide modal and wait for next_negotiation_day
+                # The modal will reopen automatically when the next negotiation day arrives
+                self._hide_negotiation_modal()
+                DebugConfig.log('engine', f"Modal closed, will reopen on day {negotiation.next_negotiation_day if negotiation else 'N/A'}")
 
     def _apply_litter_proximity_penalties(self):
         """Apply satisfaction penalties to guests near litter"""
@@ -3060,9 +3185,9 @@ class Game:
             # Time system
             'time': {
                 'game_time': self.game_time,
+                'game_year': self.game_year,
+                'game_month': self.game_month,
                 'game_day': self.game_day,
-                'game_hour': self.game_hour,
-                'game_minute': self.game_minute,
                 'game_speed': self.game_speed,
                 'park_open': self.park_open
             },
@@ -3274,9 +3399,14 @@ class Game:
             # Restore time
             time_data = game_state['time']
             self.game_time = time_data['game_time']
-            self.game_day = time_data['game_day']
-            self.game_hour = time_data['game_hour']
-            self.game_minute = time_data['game_minute']
+            # New calendar system
+            self.game_year = time_data.get('game_year', self.STARTING_YEAR)
+            self.game_month = time_data.get('game_month', 1)
+            self.game_day = time_data.get('game_day', 1)
+            # Backwards compatibility with old saves
+            if 'game_hour' in time_data:
+                # Old save format - recalculate date from game_time
+                pass  # Date will be recalculated on next frame
             self.game_speed = time_data['game_speed']
             self.park_open = time_data['park_open']
 

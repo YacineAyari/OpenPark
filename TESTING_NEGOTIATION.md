@@ -1,17 +1,27 @@
-# Testing the Salary Negotiation System
+# Salary Negotiation System
 
-## Setup for Testing
+## Production Settings (Active)
 
-The negotiation system has been temporarily configured for easy testing:
+The negotiation system is now configured for production gameplay with a **full calendar system**:
 
-### Changes Made for Testing:
-1. **Time acceleration**: 1 day = 30 seconds real time (was 12 minutes)
-2. **Negotiation trigger probability**: Set to 100% (was 10%-90% based on profit)
-3. **Negotiation months**: All employee types trigger on Month 1/Day 1 (was staggered: months 3, 6, 9, 12)
-4. **Location in code**:
-   - `engine.py` line 61: day_duration_real_minutes = 0.5
-   - `salary_negotiation.py` lines 49-53: negotiation_months
-   - `salary_negotiation.py` lines 92-94: 100% trigger chance
+### Current Settings:
+1. **Time System**: Real calendar with months, days, and years
+   - **1 month = 12 real minutes** (720 seconds)
+   - **1 year = 144 real minutes** (2 hours 24 minutes)
+   - Start date: **January 1, 2025**
+   - Proper month lengths (31, 28, 30, 31, etc.)
+   - HUD displays: "Jan 15, 2025" format
+2. **Negotiation trigger**: Once per year in **March only**
+   - Only **ONE employee type** negotiates per year
+   - Selection is **weighted by employee count**: More employees = higher chance
+   - Example: 10 maintenance workers = 77% chance vs 2 engineers = 15% chance
+3. **Negotiation probability**: Based on park profit (10%-90%)
+   - Profit > $10,000: 90% chance
+   - Profit > $5,000: 60% chance
+   - Profit > $0: 30% chance
+   - Losing money: 10% chance
+4. **Acceptance threshold**: 50% of demanded increase
+5. **Luck factor**: 20% chance for offers below threshold
 
 ## How to Test
 
@@ -30,16 +40,17 @@ python run.py
 - Click to enable **"ENGINE"** logging
 - This will show negotiation trigger messages in the console
 
-### Step 4: Wait ~30 Seconds for Day to Change
-- **IMPORTANT**: Days now change at **00:00** (midnight)
-- Day 1 starts at 09:00, runs until 23:59, then Day 2 starts at 00:00
-- Time passes: **1 day = 30 seconds** real time (accelerated for testing)
-- Watch the HUD: "D1 09:00" → "D1 23:59" → "D2 00:00"
-- Optional speed up: Press '2' for 2x (15s/day) or '3' for 3x (10s/day)
+### Step 4: Wait for March to Test Negotiations
+- **Calendar System**: HUD displays "Jan 1, 2025" → "Jan 2, 2025" → ... → "Mar 1, 2025"
+- **Time scale**: 1 month = 12 real minutes (1 year = 2h24)
+- Watch the HUD date change: "Jan 15, 2025" → "Feb 3, 2025" → "Mar 1, 2025"
+- Negotiations only trigger in **March** (month 3)
+- Optional speed up: Press '2' for 2x (6 min/month) or '3' for 3x (4 min/month)
+- **Note**: To test quickly, you can modify `MONTH_DURATION_MINUTES` in engine.py temporarily
 
 ### Step 5: Negotiation Modal Appears
-When the modal appears (on Day 2 at 00:00), you'll see:
-- **Employee type** and count
+When the modal appears (in March, if negotiation triggers), you'll see:
+- **Employee type** and count (weighted random: more employees = higher chance)
 - **Current salary** vs **demanded salary**
 - **Increase percentage** (15-30%)
 - **Stage** (1st proposal, 2nd, 3rd, strike, or ultimatum)
@@ -54,10 +65,11 @@ When the modal appears (on Day 2 at 00:00), you'll see:
 
 #### Option B: Counter-Offer (Yellow Button)
 - Use the slider to choose your offer
-- Green indicator: "✓ Probablement accepté" (≥80% of demanded)
-- Red indicator: "✗ Probablement refusé" (<80% of demanded)
-- If offer ≥80%: Accepted, negotiation ends
-- If offer <80%: Rejected, advance to next stage
+- Green indicator: "✓ Probablement accepté" (≥50% of demanded **increase**)
+- Red indicator: "✗ Probablement refusé" (<50% of demanded **increase**)
+- Example: Current $50, Demanded $63 (+$13) → Threshold = $50 + ($13 × 0.5) = $56.5
+- If offer ≥ threshold: **100% chance** of acceptance
+- If offer < threshold: **20% chance** of acceptance (luck factor), otherwise rejected
 
 #### Option C: Reject (Red Button)
 - Offer $0 = full rejection
@@ -68,27 +80,29 @@ When the modal appears (on Day 2 at 00:00), you'll see:
 
 **Stage 1: First Proposal**
 - No penalties yet
-- Rejection → Stage 2 in 1 day
+- Rejection → Stage 2 in **1 calendar day** (12 real minutes / game speed)
 
 **Stage 2: Second Proposal (-35% efficiency)**
 - Engineers repair 35% slower
 - Maintenance cleans 35% slower
-- Rejection → Stage 3 in 1 day
+- Rejection → Stage 3 in **1 calendar day**
 
 **Stage 3: Third Proposal (-75% efficiency)**
 - Engineers repair 75% slower
 - Maintenance cleans 75% slower
-- Rejection → Strike in 1 day
+- Rejection → Strike in **1 calendar day**
 
 **Stage 4: Strike (0% efficiency)**
 - All affected employees stop working completely
 - Engineers won't repair rides
 - Maintenance won't clean litter
-- Lasts 1 day → Final Ultimatum
+- Lasts **1 calendar day** → Final Ultimatum
 
 **Stage 5: Final Ultimatum**
 - Last chance to accept
-- Rejection → All employees resign (NOT YET IMPLEMENTED)
+- Modal appears IMMEDIATELY after strike (same calendar day)
+- Rejection → All employees resign and **walk to the park entrance** before disappearing
+- (**Note**: Animated exit currently implemented for Engineers and Maintenance Workers only)
 
 ### Step 8: Observe Efficiency Penalties
 
@@ -109,54 +123,58 @@ When the modal appears (on Day 2 at 00:00), you'll see:
 ## Expected Behavior
 
 ✅ **Working Correctly:**
-- Modal appears on day 1 when employees exist
+- Calendar system displays proper month/day/year (e.g., "Mar 15, 2025")
+- Days advance correctly through months with proper lengths
+- Negotiations only trigger once per year in March
+- Weighted random selection favors employee types with more workers
+- Modal appears when triggered in March
 - Slider adjusts counter-offer smoothly
-- Offers ≥80% of demanded → Accepted
-- Offers <80% of demanded → Rejected
-- Each rejection advances to next stage (1 day delay)
+- Offers ≥50% of demanded increase → Accepted (or 20% luck chance if below)
+- Offers <50% → Rejected and advance to next stage
+- Each rejection advances to next stage (1 calendar day delay = 12 real min)
 - Efficiency penalties apply correctly per stage
 - Strike = 0% work (complete stoppage)
+- Final ultimatum appears immediately after strike (same calendar day)
+- Resignation system removes all employees of that type
 - Salaries update on acceptance
 
 ❌ **Not Yet Implemented:**
-- Resignation system (after final ultimatum failure)
-- Multiple simultaneous negotiations (only 1 per employee type at a time)
+- Multiple simultaneous negotiations (only 1 per year total)
 - Notification toasts/messages
-- Save/load negotiation state restoration
+- Visual indicators for employees on strike
+- Leap year handling (February always 28 days)
 
-## Cleanup After Testing
+## System Architecture
 
-**IMPORTANT**: Before production release, restore original values:
+### Key Components
 
-### In `engine.py` (line 59-61):
-```python
-# Restore normal time speed
-self.day_duration_real_minutes = time_config.get('day_duration_minutes', 12.0)
-```
+**`salary_negotiation.py`**: Core negotiation logic
+- `SalaryNegotiationManager`: Manages all active negotiations
+- `NegotiationState`: Tracks current negotiation state and progression
+- `NegotiationStage`: Enum for 5 stages (proposal → strike → ultimatum)
 
-### In `salary_negotiation.py`:
-```python
-# Line 48-53: Restore negotiation months
-self.negotiation_months = {
-    'engineer': 3,      # Month 3
-    'maintenance': 6,   # Month 6
-    'security': 9,      # Month 9
-    'mascot': 12        # Month 12
-}
+**`engine.py`**: Integration with game loop
+- `_check_and_trigger_salary_negotiations()`: Checks monthly triggers
+- `_show_negotiation_modal()`: Shows modal and pauses game
+- `_handle_negotiation_response()`: Processes player decisions
+- Employee resignation handling with pathfinding to park exit
 
-# Line 92-94: Remove forced 100% chance
-# DELETE these lines:
-# TESTING MODE: Force 100% chance for easy testing
-# TODO: Remove this for production
-chance = 1.0
-```
+**`ui.py`**: Negotiation modal interface
+- Interactive slider for counter-offers
+- Real-time acceptance threshold calculation
+- Visual feedback (green/red indicators)
+
+**`employees.py`**: Efficiency penalty system
+- Each employee class checks `salary_negotiation_manager.get_efficiency_penalty()`
+- Penalties applied to work speed (repair, cleaning, etc.)
+- Strike state (100% penalty) stops all work
 
 ## Known Issues
 
-1. **No resignation**: Final ultimatum failure doesn't remove employees yet
-2. **No save persistence**: Active negotiations may not save/load correctly
-3. **Single negotiation**: Only one employee type can negotiate at a time
-4. **No visual indicators**: Employees on strike have no visual indicator (no strike icon)
+1. **No save persistence**: Active negotiations may not save/load correctly
+2. **Single negotiation**: Only one employee type can negotiate at a time
+3. **No visual indicators**: Employees on strike have no visual indicator (no strike icon)
+4. **No notification system**: No toast/popup messages to inform player of negotiation events
 
 ## Debug Logging
 
@@ -167,14 +185,17 @@ chance = 1.0
 3. **Enable "EMPLOYEES"** logging (optional, shows employee penalties)
 4. Watch the **terminal/console** for messages like:
    ```
-   DEBUG [engine]: Day changed from 1 to 2, checking negotiations...
-   DEBUG [engine]: Negotiation check: Day 2, Year 1, Profit $-...
-   DEBUG [engine]:   engineer: Found 1 employees
-   DEBUG [engine]:     engineer: current_month=2, required_month=1
-   DEBUG [engine]:     engineer: Wrong month, skipping
+   DEBUG [engine]: Negotiation check: Mar 15, 2025, Profit $...
+   DEBUG [engine]: Selected maintenance for negotiation (out of 13 total employees)
+   DEBUG [engine]: Started negotiation for maintenance: $30 -> $37
    ```
 
 This will tell you exactly why negotiations are/aren't triggering!
+
+**Key things to watch for:**
+- Negotiation checks only appear in March (not other months)
+- Weighted selection message shows which employee type was chosen
+- If no message appears in March, probability check failed (based on park profit)
 
 ---
 
