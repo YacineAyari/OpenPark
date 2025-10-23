@@ -54,12 +54,8 @@ class Game:
         default_proj = tuple(data.get('projection_default', [64,32]))
         default_tilt = float(data.get('tilt_default', 10.0))
 
-        # Load time system configuration
+        # Load time system configuration from JSON
         time_config = data.get('time_system', {})
-        # Time system configuration (no longer used - kept for backwards compatibility)
-        # New system uses MONTH_DURATION_MINUTES instead
-        self.day_duration_real_minutes = time_config.get('day_duration_minutes', 12.0)  # Deprecated
-        self.max_visitor_stay_days = time_config.get('max_visitor_stay_days', 10)
 
         self.rides = []; self.shops = []; self.employees = []; self.restrooms = []; self.decorations = []
         # Guests will be spawned at park entrance
@@ -111,16 +107,16 @@ class Game:
         self.game_speed = 1.0  # Current game speed (0=paused, 1=normal, 2=fast, 3=very fast)
         self.game_speed_before_modal = None  # Saved game speed before modal pause
 
-        # Calendar constants
-        self.DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]  # Jan-Dec
-        self.MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-        self.STARTING_YEAR = 2025
-        self.MONTH_DURATION_MINUTES = 12.0  # 1 month = 12 real minutes
+        # Calendar constants - loaded from objects.json
+        self.DAYS_IN_MONTH = time_config.get('days_in_month', [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31])
+        self.MONTH_NAMES = time_config.get('month_names', ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
+        self.STARTING_YEAR = time_config.get('starting_year', 2025)
+        self.MONTH_DURATION_MINUTES = time_config.get('month_duration_minutes', 12.0)  # Real minutes per game month
 
-        # Current date
-        self.game_year = self.STARTING_YEAR  # Current year (starts at 2025)
-        self.game_month = 1  # Current month (1-12, starts at January)
-        self.game_day = 1  # Current day of month (1-31 depending on month)
+        # Current date - loaded from objects.json
+        self.game_year = self.STARTING_YEAR  # Current year
+        self.game_month = time_config.get('starting_month', 1)  # Current month (1-12)
+        self.game_day = time_config.get('starting_day', 1)  # Current day of month (1-31)
 
         # Park open/close system
         self.park_open = False  # Park starts closed, player opens with 'O' key
@@ -1178,15 +1174,13 @@ class Game:
         # When paused (game_speed = 0), scaled_dt = 0, so entities don't move
         scaled_dt = dt * self.game_speed
 
-        # Update game time based on speed (independent visual clock)
-        # 1 in-game day = day_duration_real_minutes real minutes at speed x1
+        # Update game time based on speed (calendar system)
+        # 1 in-game month = MONTH_DURATION_MINUTES real minutes at speed x1
         # Speed multiplier: 0 (paused), 1 (normal), 2 (fast), 3 (very fast)
         if self.game_speed > 0:
-            # Convert real time to game time
-            # day_duration_real_minutes real minutes = 24 hours = 1440 minutes = 86400 seconds in-game
-            seconds_per_real_second = (86400.0 / (self.day_duration_real_minutes * 60.0)) * self.game_speed
-            game_dt = dt * seconds_per_real_second
-            self.game_time += game_dt
+            # Simply accumulate real time (scaled by speed)
+            # Game time is in seconds, will be converted to months/days later
+            self.game_time += dt * self.game_speed
 
             # Calculate current date (month, day, year)
             total_seconds = self.game_time
