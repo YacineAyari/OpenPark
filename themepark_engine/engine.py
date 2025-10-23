@@ -2849,7 +2849,10 @@ class Game:
         # Calculate park profit (simple: recent income - expenses)
         park_profit = self.economy.cash - 10000  # Rough estimate based on starting cash
 
-        DebugConfig.log('engine', f"Negotiation check: {self.MONTH_NAMES[self.game_month-1]} {self.game_day}, {self.game_year}, Profit ${park_profit}")
+        # Don't spam logs - only log in March or when there's an active negotiation
+        has_active = any(self.salary_negotiation_manager.get_active_negotiation(et) for et in ['engineer', 'maintenance', 'security', 'mascot'])
+        if self.game_month == 3 or has_active:
+            DebugConfig.log('engine', f"Negotiation check: {self.MONTH_NAMES[self.game_month-1]} {self.game_day}, {self.game_year}, Profit ${park_profit}")
 
         # Track last check date to avoid showing modal multiple times per day
         if not hasattr(self, '_last_negotiation_check_date'):
