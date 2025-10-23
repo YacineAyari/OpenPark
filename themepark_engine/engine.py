@@ -3031,7 +3031,9 @@ class Game:
         else:
             # Negotiation rejected - check if we need to reopen immediately
             negotiation = self.salary_negotiation_manager.get_active_negotiation(employee_type)
-            if negotiation and negotiation.next_negotiation_day == self.game_day:
+            if negotiation and (negotiation.next_negotiation_year == self.game_year and
+                                negotiation.next_negotiation_month == self.game_month and
+                                negotiation.next_negotiation_day == self.game_day):
                 # Immediate decision required (FINAL_ULTIMATUM case)
                 # Reopen modal right away (game stays paused)
                 employees_of_type = [emp for emp in self.employees if emp.defn.type == employee_type]
@@ -3039,10 +3041,11 @@ class Game:
                     self.negotiation_modal.show(negotiation, employee_type, len(employees_of_type))
                     DebugConfig.log('engine', f"IMMEDIATE: Reopening modal for {employee_type}s at stage {negotiation.current_stage.name}")
             else:
-                # Hide modal and wait for next_negotiation_day
-                # The modal will reopen automatically when the next negotiation day arrives
+                # Hide modal and wait for next_negotiation_date (year/month/day)
+                # The modal will reopen automatically when the next negotiation date arrives
                 self._hide_negotiation_modal()
-                DebugConfig.log('engine', f"Modal closed, will reopen on day {negotiation.next_negotiation_day if negotiation else 'N/A'}")
+                next_date = f"{negotiation.next_negotiation_year}-{negotiation.next_negotiation_month:02d}-{negotiation.next_negotiation_day:02d}" if negotiation else 'N/A'
+                DebugConfig.log('engine', f"Modal closed, will reopen on {next_date}")
 
     def _apply_litter_proximity_penalties(self):
         """Apply satisfaction penalties to guests near litter"""
