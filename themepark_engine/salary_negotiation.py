@@ -203,7 +203,7 @@ class SalaryNegotiationManager:
                                year: int, month: int, day: int) -> tuple[bool, str, bool]:
         """Advance negotiation to next stage after rejection
 
-        Calendar system: Next stage in 1 day (12 real minutes), except final ultimatum (immediate)
+        Calendar system: Next stage in 1 MONTH (not 1 day), except final ultimatum (immediate)
 
         Args:
             negotiation: Current negotiation state
@@ -214,18 +214,19 @@ class SalaryNegotiationManager:
         Returns: (accepted, message, resigned)
         """
 
-        # Calculate next day (1 day later in calendar)
+        # Calculate next month (1 month later in calendar, same day)
         DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-        next_day = day + 1
-        next_month = month
+        next_day = day  # Keep same day of month
+        next_month = month + 1  # Advance by 1 month
         next_year = year
 
-        if next_day > DAYS_IN_MONTH[month - 1]:
-            next_day = 1
-            next_month += 1
-            if next_month > 12:
-                next_month = 1
-                next_year += 1
+        if next_month > 12:
+            next_month = 1
+            next_year += 1
+
+        # Adjust day if it exceeds the next month's length (e.g., Jan 31 -> Feb 28)
+        if next_day > DAYS_IN_MONTH[next_month - 1]:
+            next_day = DAYS_IN_MONTH[next_month - 1]
 
         if negotiation.current_stage == NegotiationStage.FIRST_PROPOSAL:
             negotiation.current_stage = NegotiationStage.SECOND_PROPOSAL
@@ -233,7 +234,7 @@ class SalaryNegotiationManager:
             negotiation.next_negotiation_year = next_year
             negotiation.next_negotiation_month = next_month
             negotiation.next_negotiation_day = next_day
-            return False, "Offer rejected. Employees working at -35% efficiency. Next negotiation in 1 day.", False
+            return False, "Offer rejected. Employees working at -35% efficiency. Next negotiation in 1 month.", False
 
         elif negotiation.current_stage == NegotiationStage.SECOND_PROPOSAL:
             negotiation.current_stage = NegotiationStage.THIRD_PROPOSAL
@@ -241,7 +242,7 @@ class SalaryNegotiationManager:
             negotiation.next_negotiation_year = next_year
             negotiation.next_negotiation_month = next_month
             negotiation.next_negotiation_day = next_day
-            return False, "Offer rejected. Employees working at -75% efficiency. Next negotiation in 1 day.", False
+            return False, "Offer rejected. Employees working at -75% efficiency. Next negotiation in 1 month.", False
 
         elif negotiation.current_stage == NegotiationStage.THIRD_PROPOSAL:
             negotiation.current_stage = NegotiationStage.STRIKE
@@ -252,7 +253,7 @@ class SalaryNegotiationManager:
             negotiation.next_negotiation_year = next_year
             negotiation.next_negotiation_month = next_month
             negotiation.next_negotiation_day = next_day
-            return False, "Offer rejected. Employees ON STRIKE for 1 day! (0% efficiency)", False
+            return False, "Offer rejected. Employees ON STRIKE for 1 month! (0% efficiency)", False
 
         elif negotiation.current_stage == NegotiationStage.STRIKE:
             # Strike ended, final ultimatum
