@@ -364,9 +364,13 @@
   ],
   "tilt_default": 10.0,
   "time_system": {
-    "day_duration_minutes": 12.0,
-    "starting_hour": 9,
-    "max_visitor_stay_days": 10,
+    "month_duration_minutes": 12.0,
+    "starting_year": 2025,
+    "starting_month": 1,
+    "starting_day": 1,
+    "days_in_month": [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31],
+    "month_names": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+    "negotiation_month": 3,
     "speeds": [0, 1, 2, 3]
   }
 }
