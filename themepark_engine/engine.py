@@ -2852,22 +2852,34 @@ class Game:
 
         DebugConfig.log('engine', f"Negotiation check: {self.MONTH_NAMES[self.game_month-1]} {self.game_day}, {self.game_year}, Profit ${park_profit}")
 
+        # Track last check date to avoid showing modal multiple times per day
+        if not hasattr(self, '_last_negotiation_check_date'):
+            self._last_negotiation_check_date = {}
+
         # FIRST: Check for ongoing negotiations that need to resume on next day
         for employee_type in ['engineer', 'maintenance', 'security', 'mascot']:
             negotiation = self.salary_negotiation_manager.get_active_negotiation(employee_type)
             if negotiation:
                 # Check if it's time to resume (next_negotiation_month/day reached)
-                if (self.game_year > negotiation.next_negotiation_year or
+                date_reached = (self.game_year > negotiation.next_negotiation_year or
                     (self.game_year == negotiation.next_negotiation_year and
                      self.game_month > negotiation.next_negotiation_month) or
                     (self.game_year == negotiation.next_negotiation_year and
                      self.game_month == negotiation.next_negotiation_month and
-                     self.game_day >= negotiation.next_negotiation_day)):
-                    # Time to show the next stage of negotiation
-                    employees_of_type = [emp for emp in self.employees if emp.defn.type == employee_type]
-                    if employees_of_type:
-                        self._show_negotiation_modal(negotiation, employee_type, len(employees_of_type))
-                        DebugConfig.log('engine', f"Resuming negotiation for {employee_type}s at stage {negotiation.current_stage.name}")
+                     self.game_day >= negotiation.next_negotiation_day))
+
+                if date_reached:
+                    # Check if we already showed modal for this date
+                    current_date_key = (employee_type, self.game_year, self.game_month, self.game_day)
+                    last_check = self._last_negotiation_check_date.get(employee_type, (0, 0, 0))
+
+                    if (self.game_year, self.game_month, self.game_day) != last_check:
+                        # New day - show the next stage of negotiation
+                        employees_of_type = [emp for emp in self.employees if emp.defn.type == employee_type]
+                        if employees_of_type:
+                            self._show_negotiation_modal(negotiation, employee_type, len(employees_of_type))
+                            self._last_negotiation_check_date[employee_type] = (self.game_year, self.game_month, self.game_day)
+                            DebugConfig.log('engine', f"Resuming negotiation for {employee_type}s at stage {negotiation.current_stage.name}")
                 return  # Only one negotiation at a time
 
         # SECOND: Check if we should trigger a NEW negotiation (March only, once per year)
