@@ -27,8 +27,8 @@ class NegotiationModal:
         self.negotiation = negotiation
         self.employee_type = employee_type
         self.employee_count = employee_count
-        # Initialize counter offer to midpoint between current and demanded
-        self.counter_offer = (negotiation.current_salary + negotiation.demanded_salary) // 2
+        # Initialize counter offer to the demanded salary (player can negotiate down from there)
+        self.counter_offer = negotiation.demanded_salary
 
     def hide(self):
         """Hide the negotiation modal"""
@@ -84,7 +84,13 @@ class NegotiationModal:
         ratio = (x - slider_start) / slider_width
         min_value = self.negotiation.current_salary
         max_value = int(self.negotiation.demanded_salary * 1.2)
+        old_offer = self.counter_offer
         self.counter_offer = int(min_value + ratio * (max_value - min_value))
+
+        # Debug: Log when counter offer changes significantly
+        if abs(self.counter_offer - old_offer) > 1:
+            from .debug import DebugConfig
+            DebugConfig.log('engine', f"Slider moved: ${old_offer} -> ${self.counter_offer} (ratio={ratio:.2f})")
 
     def draw(self, screen):
         """Draw the negotiation modal"""
@@ -192,15 +198,21 @@ class NegotiationModal:
         counter_rect = counter_surf.get_rect(centerx=panel_x + panel_width // 2, top=y + 25)
         screen.blit(counter_surf, counter_rect)
 
-        # Acceptance threshold indicator
-        acceptance_threshold = self.negotiation.demanded_salary * 0.8
+        # Acceptance threshold indicator (50% of the demanded INCREASE)
+        demanded_increase = self.negotiation.demanded_salary - self.negotiation.current_salary
+        min_acceptable_increase = demanded_increase * 0.5
+        acceptance_threshold = self.negotiation.current_salary + min_acceptable_increase
+
         if self.counter_offer >= acceptance_threshold:
             threshold_text = "✓ Probablement accepté"
             threshold_color = (100, 255, 100)
         else:
             threshold_text = "✗ Probablement refusé"
             threshold_color = (255, 100, 100)
-        threshold_surf = self.font.render(threshold_text, True, threshold_color)
+
+        # Debug: Show exact threshold value
+        threshold_debug = f"(seuil: ${int(acceptance_threshold)})"
+        threshold_surf = self.font.render(f"{threshold_text} {threshold_debug}", True, threshold_color)
         threshold_rect = threshold_surf.get_rect(centerx=panel_x + panel_width // 2, top=y + 50)
         screen.blit(threshold_surf, threshold_rect)
 

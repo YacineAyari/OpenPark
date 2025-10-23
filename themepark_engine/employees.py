@@ -105,7 +105,10 @@ class Engineer(Employee):
                     DebugConfig.log('employees', f"Engineer {self.id} on strike, stopped working")
                 return
 
-        if self.state == "moving_to_ride":
+        if self.state == "leaving":
+            # Employee is leaving the park - use movement system
+            self._update_movement_leaving(dt)
+        elif self.state == "moving_to_ride":
             self._update_movement(dt)
         elif self.state == "moving_to_nearby":
             self._update_movement_to_nearby(dt)
@@ -244,7 +247,43 @@ class Engineer(Employee):
         # Fallback: stay at current position
         self.state = "idle"
         DebugConfig.log('employees', f"Engineer {self.id} stayed at current position after repair")
-    
+
+    def _update_movement_leaving(self, dt: float):
+        """Update movement when employee is leaving the park"""
+        if not self.path:
+            # Reached entrance - ensure is_moving is False so engine can remove
+            if self.is_moving:
+                # Finish current movement first
+                self.move_progress += dt * self.speed
+                if self.move_progress >= self.move_duration:
+                    self.x = self.target_x
+                    self.y = self.target_y
+                    self.is_moving = False
+                    self.move_progress = 0.0
+                    DebugConfig.log('employees', f"Engineer {self.id} reached park entrance and is leaving")
+                return
+            else:
+                # Already at entrance and not moving - ready to be removed
+                DebugConfig.log('employees', f"Engineer {self.id} at park entrance, ready to be removed")
+                return
+
+        # Continue walking along path (same logic as normal movement)
+        if not self.is_moving:
+            next_pos = self.path.pop(0)
+            self.target_x = float(next_pos[0])
+            self.target_y = float(next_pos[1])
+            self.is_moving = True
+            self.move_progress = 0.0
+
+        # Move tile by tile with delay
+        self.move_progress += dt * self.speed
+        if self.move_progress >= self.move_duration:
+            # Reached target position
+            self.x = self.target_x
+            self.y = self.target_y
+            self.is_moving = False
+            self.move_progress = 0.0
+
     def _move_to_nearby_position(self):
         """Move engineer to a nearby position after repair (legacy method)"""
         # This method is kept for compatibility but should not be used
@@ -603,7 +642,10 @@ class MaintenanceWorker(Employee):
                     DebugConfig.log('employees', f"Maintenance worker {self.id} on strike, stopped working")
                 return
 
-        if self.state == "idle":
+        if self.state == "leaving":
+            # Employee is leaving the park
+            self._update_movement_leaving(dt)
+        elif self.state == "idle":
             # Idle: look for work or start patrol
             self.patrol_timer += dt
             # Note: Do NOT reset patrol_timer here, it will be reset by engine
@@ -731,6 +773,41 @@ class MaintenanceWorker(Employee):
             self.move_progress = 0.0
 
         # Tile-by-tile movement with delay
+        self.move_progress += dt * self.speed
+        if self.move_progress >= self.move_duration:
+            self.x = self.target_x
+            self.y = self.target_y
+            self.is_moving = False
+            self.move_progress = 0.0
+
+    def _update_movement_leaving(self, dt: float):
+        """Update movement when employee is leaving the park"""
+        if not self.path:
+            # Reached entrance - ensure is_moving is False so engine can remove
+            if self.is_moving:
+                # Finish current movement first
+                self.move_progress += dt * self.speed
+                if self.move_progress >= self.move_duration:
+                    self.x = self.target_x
+                    self.y = self.target_y
+                    self.is_moving = False
+                    self.move_progress = 0.0
+                    DebugConfig.log('employees', f"Maintenance worker {self.id} reached park entrance and is leaving")
+                return
+            else:
+                # Already at entrance and not moving - ready to be removed
+                DebugConfig.log('employees', f"Maintenance worker {self.id} at park entrance, ready to be removed")
+                return
+
+        # Continue walking along path
+        if not self.is_moving:
+            next_pos = self.path.pop(0)
+            self.target_x = float(next_pos[0])
+            self.target_y = float(next_pos[1])
+            self.is_moving = True
+            self.move_progress = 0.0
+
+        # Move tile by tile with delay
         self.move_progress += dt * self.speed
         if self.move_progress >= self.move_duration:
             self.x = self.target_x

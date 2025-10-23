@@ -1,15 +1,26 @@
 {
   "permissions": {
     "allow": [
+      "Bash(timeout 8 python3 \"/home/enicay/Documents/Dev_Folder/openpark_oblique_mode (Copy)/run.py\")",
+      "Bash(git add themepark_engine/data/objects.json themepark_engine/engine.py assets/openmoji/shops/1F35F.png)",
+      "Bash(curl -L -o \"1FA99.png\" \"https://github.com/hfg-gmuend/openmoji/raw/master/color/72x72/1FA99.png\")",
+      "Bash(curl -L -o \"1F4C5.png\" \"https://github.com/hfg-gmuend/openmoji/raw/master/color/72x72/1F4C5.png\")",
+      "Bash(curl -L -o \"1F60A.png\" \"https://github.com/hfg-gmuend/openmoji/raw/master/color/72x72/1F60A.png\")",
+      "Bash(curl -L -o \"2B50.png\" \"https://github.com/hfg-gmuend/openmoji/raw/master/color/72x72/2B50.png\")",
+      "Bash(curl -L -o \"2705.png\" \"https://github.com/hfg-gmuend/openmoji/raw/master/color/72x72/2705.png\")",
+      "Bash(curl -L -o \"274C.png\" \"https://github.com/hfg-gmuend/openmoji/raw/master/color/72x72/274C.png\")",
+      "Bash(timeout 8 python3:*)",
+      "Bash(curl:*)",
       "Bash(python3:*)",
-      "Bash(git init)",
-      "Bash(find . -name \"*.py\" -not -path \"./.venv/*\" -not -path \"./venv/*\" -exec cat {})",
-      "Bash(git restore --staged .claude/settings.local.json)",
-      "Bash(git add .github/)",
-      "Bash(git commit -m \"docs: Rename .github/README.md to TEMPLATES.md\n\nAvoids confusion with main README.md at repository root.\nGitHub should now display the correct project README.\")",
-      "Bash(git push origin main)",
-      "Bash(wc -l \"/home/enicay/Documents/Dev_Folder/openpark_oblique_mode (Copy)/themepark_engine/data/objects.json\")",
-      "Bash(wc -l \"/home/enicay/Documents/Dev_Folder/openpark_oblique_mode (Copy)/themepark_engine/agents.py\")"
+      "Bash(timeout 10 python3:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(find:*)",
+      "Bash(timeout 15 python3:*)",
+      "Bash(ls:*)",
+      "Read(//home/enicay/Documents/Dev_Folder/openpark_oblique_mode/**)",
+      "Bash(timeout 40 python3:*)"
     ],
     "deny": [],
     "ask": []
