@@ -1329,10 +1329,9 @@ class Game:
         # Handle broken rides - evacuate queues
         self._handle_broken_rides()
 
-        # Check for salary negotiations (once per year in March)
-        # Only check during March to avoid unnecessary processing
-        if self.game_month == 3:  # March
-            self._check_and_trigger_salary_negotiations()
+        # Check for salary negotiations
+        # New negotiations start in March, but we check every month for ongoing ones
+        self._check_and_trigger_salary_negotiations()
         
         # Debug: Check for stuck visitors in rides
         for ride in self.rides:
@@ -2856,11 +2855,11 @@ class Game:
         if not hasattr(self, '_last_negotiation_check_date'):
             self._last_negotiation_check_date = {}
 
-        # FIRST: Check for ongoing negotiations that need to resume on next day
+        # FIRST: Check for ongoing negotiations that need to resume
         for employee_type in ['engineer', 'maintenance', 'security', 'mascot']:
             negotiation = self.salary_negotiation_manager.get_active_negotiation(employee_type)
             if negotiation:
-                # Check if it's time to resume (next_negotiation_month/day reached)
+                # There's an active negotiation - check if it's time to resume
                 date_reached = (self.game_year > negotiation.next_negotiation_year or
                     (self.game_year == negotiation.next_negotiation_year and
                      self.game_month > negotiation.next_negotiation_month) or
@@ -2880,6 +2879,8 @@ class Game:
                             self._show_negotiation_modal(negotiation, employee_type, len(employees_of_type))
                             self._last_negotiation_check_date[employee_type] = (self.game_year, self.game_month, self.game_day)
                             DebugConfig.log('engine', f"Resuming negotiation for {employee_type}s at stage {negotiation.current_stage.name}")
+
+                # Active negotiation exists - don't start a new one
                 return  # Only one negotiation at a time
 
         # SECOND: Check if we should trigger a NEW negotiation (March only, once per year)
