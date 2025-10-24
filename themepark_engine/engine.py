@@ -514,7 +514,7 @@ class Game:
 
             # Inventory modal handling (priority over other inputs)
             if self.inventory_modal.handle_event(e, self.inventory_manager, self.economy,
-                                                  self.game_year, self.game_month, self.game_day):
+                                                  self.game_year, self.game_month, self.game_day, self.shops):
                 continue  # Event consumed by inventory modal
 
             if e.type==pygame.KEYDOWN:
@@ -2709,7 +2709,7 @@ class Game:
 
         # Draw inventory modal (on top of other UI)
         self.inventory_modal.draw(self.screen, self.inventory_manager, self.economy,
-                                   self.game_year, self.game_month, self.game_day)
+                                   self.game_year, self.game_month, self.game_day, self.shops)
 
         pygame.display.flip()
 

@@ -68,16 +68,26 @@ Appuyez sur **[I]** à tout moment pendant le jeu.
 
 ### Passer une commande
 
-1. Dans l'onglet Stock, cliquez sur **"Order"** à côté d'un produit
+⚠️ **Important** : Vous devez d'abord placer au moins un shop correspondant au produit dans votre parc avant de pouvoir commander.
+
+1. Dans l'onglet Stock, cliquez sur **"Order"** à côté d'un produit (le bouton n'apparaît que si vous avez placé un shop utilisant ce produit)
 2. Un formulaire s'ouvre avec :
-   - **Quantité** : Ajustez avec ↑/↓ (par pas de 50)
-   - **Coût total** : Calculé automatiquement avec réduction
-   - **Délai de livraison** : Nombre de jours estimé
+   - **Quantité** : **Utilisez le slider horizontal** (10 à 1000 unités) - cliquez et glissez avec la souris
+   - **Coût total** : Calculé automatiquement avec réduction affichée
+   - **Délai de livraison** : Nombre de jours estimé (varie selon la quantité)
    - **Cash disponible** : Vérifie si vous pouvez payer
-3. Appuyez sur **[ENTER]** pour confirmer (si vous avez assez d'argent)
-4. Appuyez sur **[ESC]** pour annuler
+3. Cliquez sur **"Confirm"** pour valider (si vous avez assez d'argent)
+4. Cliquez sur **"Cancel"** ou [ESC] pour annuler
 
 ## Gameplay
+
+### Restriction de commande
+
+**Règle importante** : Vous ne pouvez commander un produit que si vous avez **au moins un shop** qui l'utilise dans votre parc.
+
+- Les produits sans shop apparaissent **grisés** dans l'onglet Stock
+- Le bouton "Order" est remplacé par "No shop" pour ces produits
+- Placez d'abord le shop correspondant, puis commandez le stock
 
 ### Ventes et consommation de stock
 

@@ -19,6 +19,7 @@ class InventoryModal:
         # Order form state
         self.selected_product_id: Optional[str] = None
         self.order_quantity = 100  # Default order quantity
+        self.slider_dragging = False  # Is quantity slider being dragged
 
         # Modal dimensions
         self.width = 700
@@ -38,7 +39,7 @@ class InventoryModal:
         self.visible = not self.visible
 
     def handle_event(self, event: pygame.event.Event, inventory: InventoryManager,
-                     economy, year: int, month: int, day: int) -> bool:
+                     economy, year: int, month: int, day: int, shops: list = None) -> bool:
         """
         Handle pygame events for the modal.
         Returns True if event was handled, False otherwise.
@@ -46,46 +47,18 @@ class InventoryModal:
         if not self.visible:
             return False
 
+        screen_w, screen_h = pygame.display.get_surface().get_size()
+        modal_x = (screen_w - self.width) // 2
+        modal_y = (screen_h - self.height) // 2
+
         if event.type == pygame.KEYDOWN:
+            # Keep ESC and I to close modal
             if event.key == pygame.K_ESCAPE or event.key == pygame.K_i:
                 self.hide()
                 return True
 
-            # Tab switching
-            if event.key == pygame.K_1:
-                self.active_tab = "stock"
-                return True
-            elif event.key == pygame.K_2:
-                self.active_tab = "orders"
-                return True
-
-            # Quantity adjustment in order form
-            if self.selected_product_id:
-                if event.key == pygame.K_UP:
-                    self.order_quantity = min(1000, self.order_quantity + 50)
-                    return True
-                elif event.key == pygame.K_DOWN:
-                    self.order_quantity = max(10, self.order_quantity - 50)
-                    return True
-                elif event.key == pygame.K_RETURN:
-                    # Place order
-                    total_cost, _, _ = inventory.calculate_order_price(self.selected_product_id, self.order_quantity)
-                    if economy.cash >= total_cost:
-                        inventory.place_order(self.selected_product_id, self.order_quantity, year, month, day)
-                        economy.subtract_expense(total_cost)
-                        self.selected_product_id = None
-                        self.order_quantity = 100
-                    return True
-                elif event.key == pygame.K_ESCAPE:
-                    self.selected_product_id = None
-                    return True
-
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Left click
-                # Check if clicking outside modal to close
-                screen_w, screen_h = pygame.display.get_surface().get_size()
-                modal_x = (screen_w - self.width) // 2
-                modal_y = (screen_h - self.height) // 2
                 mx, my = event.pos
 
                 # Click outside modal closes it
@@ -104,20 +77,92 @@ class InventoryModal:
                     self.active_tab = "orders"
                     return True
 
-                # Handle product clicks in stock tab
-                if self.active_tab == "stock":
+                # Handle product "Order" button clicks in stock tab
+                if self.active_tab == "stock" and shops:
                     product_list_y = modal_y + 100
                     for i, (product_id, product) in enumerate(inventory.products.items()):
-                        item_rect = pygame.Rect(modal_x + 30, product_list_y + i * 50, 300, 40)
-                        if item_rect.collidepoint(mx, my):
+                        # Check if player has any shops that use this product
+                        has_shop = self._has_shop_for_product(product_id, product, shops)
+                        if not has_shop:
+                            continue  # Skip if no shops placed
+
+                        button_rect = pygame.Rect(modal_x + 490, product_list_y + i * 50 + 5, 70, 30)
+                        if button_rect.collidepoint(mx, my):
                             self.selected_product_id = product_id
                             self.order_quantity = 100
                             return True
 
+                # Handle order form slider and buttons
+                if self.selected_product_id:
+                    form_width = 400
+                    form_height = 250
+                    form_x = modal_x + (self.width - form_width) // 2
+                    form_y = modal_y + (self.height - form_height) // 2
+
+                    # Quantity slider
+                    slider_x = form_x + 120
+                    slider_y = form_y + 60
+                    slider_width = 200
+                    slider_height = 20
+                    slider_rect = pygame.Rect(slider_x, slider_y, slider_width, slider_height)
+
+                    if slider_rect.collidepoint(mx, my):
+                        # Calculate quantity from mouse position on slider
+                        ratio = (mx - slider_x) / slider_width
+                        ratio = max(0, min(1, ratio))
+                        self.order_quantity = int(10 + ratio * 990)  # 10 to 1000
+                        self.slider_dragging = True
+                        return True
+
+                    # Confirm button
+                    confirm_rect = pygame.Rect(form_x + 80, form_y + 210, 120, 30)
+                    if confirm_rect.collidepoint(mx, my):
+                        total_cost, _, _ = inventory.calculate_order_price(self.selected_product_id, self.order_quantity)
+                        if economy.cash >= total_cost:
+                            inventory.place_order(self.selected_product_id, self.order_quantity, year, month, day)
+                            economy.subtract_expense(total_cost)
+                            self.selected_product_id = None
+                            self.order_quantity = 100
+                        return True
+
+                    # Cancel button
+                    cancel_rect = pygame.Rect(form_x + 220, form_y + 210, 120, 30)
+                    if cancel_rect.collidepoint(mx, my):
+                        self.selected_product_id = None
+                        self.slider_dragging = False
+                        return True
+
+        elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:
+                self.slider_dragging = False
+                return True
+
+        elif event.type == pygame.MOUSEMOTION:
+            if self.slider_dragging and self.selected_product_id:
+                # Update quantity while dragging slider
+                form_width = 400
+                form_x = modal_x + (self.width - form_width) // 2
+                slider_x = form_x + 120
+                slider_width = 200
+
+                mx = event.pos[0]
+                ratio = (mx - slider_x) / slider_width
+                ratio = max(0, min(1, ratio))
+                self.order_quantity = int(10 + ratio * 990)  # 10 to 1000
+                return True
+
+        return False
+
+    def _has_shop_for_product(self, product_id: str, product, shops: list) -> bool:
+        """Check if player has placed any shop that uses this product"""
+        for shop_id in product.used_by_shops:
+            for shop in shops:
+                if shop.defn.id == shop_id:
+                    return True
         return False
 
     def draw(self, screen: pygame.Surface, inventory: InventoryManager, economy,
-             year: int, month: int, day: int):
+             year: int, month: int, day: int, shops: list = None):
         """Draw the inventory modal"""
         if not self.visible:
             return
@@ -154,7 +199,7 @@ class InventoryModal:
 
         # Content area
         if self.active_tab == "stock":
-            self._draw_stock_tab(screen, modal_x, modal_y, inventory)
+            self._draw_stock_tab(screen, modal_x, modal_y, inventory, shops)
         else:
             self._draw_orders_tab(screen, modal_x, modal_y, inventory, year, month, day)
 
@@ -164,12 +209,12 @@ class InventoryModal:
 
         # Instructions
         inst_y = modal_y + self.height - 30
-        inst_text = "[I/ESC] Close | [1/2] Switch Tab"
+        inst_text = "[I/ESC] Close | Click to interact"
         inst_surf = self.font.render(inst_text, True, (180, 180, 180))
         screen.blit(inst_surf, (modal_x + self.padding, inst_y))
 
     def _draw_stock_tab(self, screen: pygame.Surface, modal_x: int, modal_y: int,
-                        inventory: InventoryManager):
+                        inventory: InventoryManager, shops: list = None):
         """Draw stock overview tab"""
         y = modal_y + 100
 
@@ -188,23 +233,29 @@ class InventoryModal:
             stock = inventory.get_stock(product_id)
             cost_per_unit = inventory.get_current_cost(product_id)
 
+            # Check if player has any shops for this product
+            has_shop = self._has_shop_for_product(product_id, product, shops) if shops else False
+
             # Background highlight
             if i % 2 == 0:
                 pygame.draw.rect(screen, (50, 50, 60), (modal_x + 20, y, 660, 40))
 
+            # Color tint for products without shops
+            text_color = (255, 255, 255) if has_shop else (120, 120, 130)
+
             # Stock color coding
             if stock == 0:
-                stock_color = (255, 80, 80)  # Red - out of stock
+                stock_color = (255, 80, 80) if has_shop else (120, 40, 40)
                 status_icon = "⚠️"
             elif stock < 50:
-                stock_color = (255, 200, 80)  # Yellow - low stock
+                stock_color = (255, 200, 80) if has_shop else (120, 100, 40)
                 status_icon = "⚠"
             else:
-                stock_color = (80, 255, 120)  # Green - good stock
+                stock_color = (80, 255, 120) if has_shop else (40, 120, 60)
                 status_icon = "✓"
 
             # Product name
-            name_surf = self.font.render(f"{status_icon} {product.name}", True, (255, 255, 255))
+            name_surf = self.font.render(f"{status_icon} {product.name}", True, text_color)
             screen.blit(name_surf, (modal_x + 30, y + 10))
 
             # Stock amount
@@ -212,15 +263,20 @@ class InventoryModal:
             screen.blit(stock_surf, (modal_x + 260, y + 10))
 
             # Cost per unit
-            cost_surf = self.font.render(f"${cost_per_unit:.2f}", True, (200, 200, 200))
+            cost_surf = self.font.render(f"${cost_per_unit:.2f}", True, text_color)
             screen.blit(cost_surf, (modal_x + 360, y + 10))
 
-            # Order button
-            button_rect = pygame.Rect(modal_x + 490, y + 5, 70, 30)
-            pygame.draw.rect(screen, (80, 150, 80), button_rect)
-            pygame.draw.rect(screen, (120, 200, 120), button_rect, 2)
-            order_text = self.font.render("Order", True, (255, 255, 255))
-            screen.blit(order_text, (modal_x + 500, y + 12))
+            # Order button (only if shop exists)
+            if has_shop:
+                button_rect = pygame.Rect(modal_x + 490, y + 5, 70, 30)
+                pygame.draw.rect(screen, (80, 150, 80), button_rect)
+                pygame.draw.rect(screen, (120, 200, 120), button_rect, 2)
+                order_text = self.font.render("Order", True, (255, 255, 255))
+                screen.blit(order_text, (modal_x + 500, y + 12))
+            else:
+                # Show "No shop" message instead
+                no_shop_text = self.font.render("No shop", True, (150, 150, 150))
+                screen.blit(no_shop_text, (modal_x + 490, y + 12))
 
             y += 50
 
@@ -321,15 +377,42 @@ class InventoryModal:
         title = self.font.render(f"Order {product.name}", True, (255, 255, 255))
         screen.blit(title, (form_x + 20, form_y + 20))
 
-        # Quantity selector
+        # Quantity selector with slider
         qty_label = self.font.render("Quantity:", True, (200, 200, 200))
         screen.blit(qty_label, (form_x + 20, form_y + 60))
 
         qty_value = self.font.render(f"{self.order_quantity} units", True, (255, 255, 100))
         screen.blit(qty_value, (form_x + 120, form_y + 60))
 
-        qty_hint = self.font.render("[↑/↓ to adjust]", True, (150, 150, 150))
-        screen.blit(qty_hint, (form_x + 120, form_y + 80))
+        # Slider bar (10 to 1000 range)
+        slider_x = form_x + 120
+        slider_y = form_y + 85
+        slider_width = 200
+        slider_height = 20
+
+        # Slider background
+        pygame.draw.rect(screen, (60, 60, 70), (slider_x, slider_y, slider_width, slider_height))
+
+        # Slider fill (current value)
+        fill_ratio = (self.order_quantity - 10) / 990  # 10 to 1000
+        fill_width = int(slider_width * fill_ratio)
+        if fill_width > 0:
+            pygame.draw.rect(screen, (80, 150, 255), (slider_x, slider_y, fill_width, slider_height))
+
+        # Slider border
+        pygame.draw.rect(screen, (120, 120, 140), (slider_x, slider_y, slider_width, slider_height), 2)
+
+        # Slider handle
+        handle_x = slider_x + fill_width
+        handle_y = slider_y
+        pygame.draw.circle(screen, (150, 200, 255), (handle_x, handle_y + slider_height // 2), 8)
+        pygame.draw.circle(screen, (200, 220, 255), (handle_x, handle_y + slider_height // 2), 8, 2)
+
+        # Range labels
+        min_label = self.font.render("10", True, (150, 150, 150))
+        max_label = self.font.render("1000", True, (150, 150, 150))
+        screen.blit(min_label, (slider_x - 20, slider_y + 3))
+        screen.blit(max_label, (slider_x + slider_width + 5, slider_y + 3))
 
         # Price calculation
         total_cost, delivery_days, discount_percent = inventory.calculate_order_price(
@@ -362,16 +445,27 @@ class InventoryModal:
         cash_surf = self.font.render(cash_text, True, cash_color)
         screen.blit(cash_surf, (form_x + 20, form_y + 180))
 
-        # Buttons
+        # Buttons (clickable)
+        confirm_rect = pygame.Rect(form_x + 80, form_y + 210, 120, 30)
+        cancel_rect = pygame.Rect(form_x + 220, form_y + 210, 120, 30)
+
         if can_afford:
-            confirm_text = "[ENTER] Confirm Order"
-            confirm_color = (120, 255, 150)
+            pygame.draw.rect(screen, (80, 180, 80), confirm_rect)
+            pygame.draw.rect(screen, (120, 220, 120), confirm_rect, 2)
+            confirm_text = "Confirm"
+            confirm_color = (255, 255, 255)
         else:
-            confirm_text = "Insufficient funds!"
-            confirm_color = (255, 100, 100)
+            pygame.draw.rect(screen, (100, 50, 50), confirm_rect)
+            pygame.draw.rect(screen, (150, 80, 80), confirm_rect, 2)
+            confirm_text = "No funds"
+            confirm_color = (200, 200, 200)
 
         confirm_surf = self.font.render(confirm_text, True, confirm_color)
-        screen.blit(confirm_surf, (form_x + 80, form_y + 210))
+        text_rect = confirm_surf.get_rect(center=confirm_rect.center)
+        screen.blit(confirm_surf, text_rect)
 
-        cancel_surf = self.font.render("[ESC] Cancel", True, (200, 200, 200))
-        screen.blit(cancel_surf, (form_x + 250, form_y + 210))
+        pygame.draw.rect(screen, (80, 80, 100), cancel_rect)
+        pygame.draw.rect(screen, (120, 120, 140), cancel_rect, 2)
+        cancel_surf = self.font.render("Cancel", True, (255, 255, 255))
+        text_rect = cancel_surf.get_rect(center=cancel_rect.center)
+        screen.blit(cancel_surf, text_rect)
