@@ -372,5 +372,56 @@
     "month_names": ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
     "negotiation_month": 3,
     "speeds": [0, 1, 2, 3]
-  }
+  },
+  "products": [
+    {
+      "id": "product_soda",
+      "name": "Sodas",
+      "base_cost": 0.5,
+      "category": "drink",
+      "used_by_shops": ["shop_soda"]
+    },
+    {
+      "id": "product_fries",
+      "name": "Frites",
+      "base_cost": 0.8,
+      "category": "food",
+      "used_by_shops": ["shop_fries"]
+    },
+    {
+      "id": "product_burger",
+      "name": "Burgers",
+      "base_cost": 2.0,
+      "category": "food",
+      "used_by_shops": ["shop_restaurant"]
+    },
+    {
+      "id": "product_hotdog",
+      "name": "Hotdogs",
+      "base_cost": 1.2,
+      "category": "food",
+      "used_by_shops": ["shop_hotdog"]
+    },
+    {
+      "id": "product_icecream",
+      "name": "Glaces",
+      "base_cost": 1.0,
+      "category": "food",
+      "used_by_shops": ["shop_icecream", "shop_candy"]
+    },
+    {
+      "id": "product_souvenir",
+      "name": "Souvenirs",
+      "base_cost": 1.5,
+      "category": "souvenir",
+      "used_by_shops": ["shop_gift"]
+    },
+    {
+      "id": "product_pizza",
+      "name": "Pizzas",
+      "base_cost": 1.8,
+      "category": "food",
+      "used_by_shops": ["shop_pizza"]
+    }
+  ]
 }

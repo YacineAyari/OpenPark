@@ -12,6 +12,7 @@ from .decorations import Decoration, DecorationDef
 from .employees import EmployeeDef, Engineer, MaintenanceWorker, SecurityGuard, Mascot
 from .economy import Economy
 from .ui import Toolbar, NegotiationModal
+from .ui_parts.inventory_modal import InventoryModal
 from .renderers.iso import IsoRenderer
 from .ui_parts.debug_menu import DebugMenu
 from .queue_v2 import QueueManagerV2
@@ -19,6 +20,7 @@ from .serpent_queue import SerpentQueueManager, Direction, Movement, MovementTyp
 from .debug import DebugConfig
 from .litter import LitterManager, BinDef, DEFAULT_BIN, Litter
 from .salary_negotiation import SalaryNegotiationManager
+from .inventory import InventoryManager, ProductDef
 from .save_load import (SaveLoadManager, serialize_grid, serialize_ride, serialize_shop,
                          serialize_employee, serialize_guest, serialize_bin, serialize_litter,
                          serialize_restroom)
@@ -50,6 +52,10 @@ class Game:
         self.bin_defs = {b['id']: BinDef(**b) for b in data.get('bins', [])}  # Load bin definitions
         self.restroom_defs = {r['id']: RestroomDef(**r) for r in data.get('restrooms', [])}  # Load restroom definitions
         self.decoration_defs = {d['id']: DecorationDef(**d) for d in data.get('decorations', [])}  # Load decoration definitions
+
+        # Load product definitions and initialize inventory system
+        product_defs = {p['id']: ProductDef(**p) for p in data.get('products', [])}
+        self.inventory_manager = InventoryManager(product_defs)
         self.proj_presets = [tuple(p) for p in data.get('projection_presets', [(64,32)])]
         default_proj = tuple(data.get('projection_default', [64,32]))
         default_tilt = float(data.get('tilt_default', 10.0))
@@ -71,6 +77,9 @@ class Game:
         # Negotiation modal
         large_font = pygame.font.SysFont('Arial', 20, bold=True)
         self.negotiation_modal = NegotiationModal(self.font, large_font)
+
+        # Inventory modal
+        self.inventory_modal = InventoryModal(self.font)
 
         self.dragging=False; self.drag_start=(0,0); self.cam_start=(0,0)
         self.path_dragging=False; self.last_path_pos=None
@@ -101,6 +110,7 @@ class Game:
         self.guest_spawn_rate = self._calculate_spawn_rate()  # Dynamic spawn rate based on entrance fee
         self.guests_entered = 0  # Track total guests entered
         self.guests_left = 0  # Track total guests who left
+        self.max_visitor_stay_days = 3  # Maximum days a visitor stays before leaving
 
         # Time system - Calendar based (months, days, years)
         self.game_time = 0.0  # Game time in seconds (elapsed since game start)
@@ -117,6 +127,10 @@ class Game:
         self.game_year = self.STARTING_YEAR  # Current year
         self.game_month = time_config.get('starting_month', 1)  # Current month (1-12)
         self.game_day = time_config.get('starting_day', 1)  # Current day of month (1-31)
+
+        # Track previous date to detect day/year changes for inventory system
+        self._prev_game_day = self.game_day
+        self._prev_game_year = self.game_year
 
         # Park open/close system
         self.park_open = False  # Park starts closed, player opens with 'O' key
@@ -497,6 +511,12 @@ class Game:
                     elif action == 'reject':
                         self._handle_negotiation_response(0, accept=False)
                 continue  # Don't process other events while modal is open
+
+            # Inventory modal handling (priority over other inputs)
+            if self.inventory_modal.handle_event(e, self.inventory_manager, self.economy,
+                                                  self.game_year, self.game_month, self.game_day):
+                continue  # Event consumed by inventory modal
+
             if e.type==pygame.KEYDOWN:
                 # Handle text input for save/load dialog
                 if self.save_load_dialog_open and self.save_load_mode == 'save':
@@ -547,6 +567,11 @@ class Game:
                         self.park_just_closed = True  # Trigger evacuation
                     status = "OPEN" if self.park_open else "CLOSED"
                     DebugConfig.log('engine', f"Park is now {status}")
+
+                # Inventory modal toggle
+                elif e.key==pygame.K_i:
+                    self.inventory_modal.toggle()
+                    DebugConfig.log('engine', f"Inventory modal {'opened' if self.inventory_modal.visible else 'closed'}")
 
                 # Save/Load controls
                 elif e.key==pygame.K_F5:
@@ -1107,6 +1132,24 @@ class Game:
         if evacuation_count > 0:
             DebugConfig.log('engine', f"Park closed - evacuating {evacuation_count} guests")
 
+    def _on_day_changed(self):
+        """Called when game day changes - advance pending orders"""
+        delivered_orders = self.inventory_manager.tick_day()
+
+        # Log deliveries
+        if delivered_orders:
+            for order in delivered_orders:
+                product = self.inventory_manager.products.get(order.product_id)
+                product_name = product.name if product else order.product_id
+                DebugConfig.log('engine', f"Order delivered: {order.quantity}x {product_name} (${order.total_cost:.2f})")
+
+    def _on_year_changed(self):
+        """Called when year changes - apply annual inflation in January"""
+        if self.game_month == 1:  # January
+            self.inventory_manager.apply_annual_inflation(self.game_year)
+            inflation_percent = (self.inventory_manager.inflation_rate - 1.0) * 100
+            DebugConfig.log('engine', f"Annual inflation applied: {inflation_percent:.1f}% total")
+
     def _handle_leaving_guests(self):
         """Handle guests wanting to leave the park (unhappy or satisfied)"""
         if not self.park_entrance:
@@ -1207,6 +1250,16 @@ class Game:
             # Ensure day stays in valid range
             self.game_day = min(self.game_day, days_in_current_month)
 
+            # Detect day change for inventory system (orders, inflation)
+            if self.game_day != self._prev_game_day:
+                self._on_day_changed()
+                self._prev_game_day = self.game_day
+
+            # Detect year change for annual inflation
+            if self.game_year != self._prev_game_year:
+                self._on_year_changed()
+                self._prev_game_year = self.game_year
+
         # Handle park closure evacuation
         if self.park_just_closed:
             self._evacuate_park()
@@ -1240,27 +1293,66 @@ class Game:
 
             # Check if guest just finished shopping (state changed from SHOPPING to something else)
             if previous_state == "shopping" and g.state != "shopping" and previous_shop:
-                # Guest finished shopping, add revenue
-                shop_price = previous_shop.defn.base_price
-                self.economy.add_income(shop_price)
-                DebugConfig.log('engine', f"Guest {g.id} finished shopping at {previous_shop.defn.name}, revenue: ${shop_price}")
+                # Guest finished shopping - check inventory and consume stock
+                product_id = self.inventory_manager.get_product_for_shop(previous_shop.defn.id)
+
+                if product_id and self.inventory_manager.consume_stock(product_id):
+                    # Stock available - complete sale
+                    shop_price = previous_shop.defn.base_price
+                    self.economy.add_income(shop_price)
+                    DebugConfig.log('engine', f"Guest {g.id} finished shopping at {previous_shop.defn.name}, revenue: ${shop_price}, stock remaining: {self.inventory_manager.get_stock(product_id)}")
+                elif product_id:
+                    # Out of stock - guest gets nothing, loses satisfaction
+                    g.satisfaction -= 10
+                    DebugConfig.log('engine', f"Guest {g.id} found {previous_shop.defn.name} OUT OF STOCK, satisfaction -{10}")
+                else:
+                    # Shop has no linked product (shouldn't happen, but handle gracefully)
+                    shop_price = previous_shop.defn.base_price
+                    self.economy.add_income(shop_price)
+                    DebugConfig.log('engine', f"Guest {g.id} finished shopping at {previous_shop.defn.name} (no product tracking), revenue: ${shop_price}")
 
                 # Apply shopping satisfaction bonus
                 g.apply_shopping_bonus()
 
             # Check if guest just finished eating (state changed from EATING to something else)
             if previous_state == "eating" and g.state != "eating" and previous_target_shop:
-                # Guest finished eating, add revenue (guest already paid in tick handler)
-                food_price = previous_target_shop.defn.base_price
-                self.economy.add_income(food_price)
-                DebugConfig.log('engine', f"Guest {g.id} finished eating at {previous_target_shop.defn.name}, revenue: ${food_price}")
+                # Guest finished eating - check inventory and consume stock
+                product_id = self.inventory_manager.get_product_for_shop(previous_target_shop.defn.id)
+
+                if product_id and self.inventory_manager.consume_stock(product_id):
+                    # Stock available - complete sale
+                    food_price = previous_target_shop.defn.base_price
+                    self.economy.add_income(food_price)
+                    DebugConfig.log('engine', f"Guest {g.id} finished eating at {previous_target_shop.defn.name}, revenue: ${food_price}, stock remaining: {self.inventory_manager.get_stock(product_id)}")
+                elif product_id:
+                    # Out of stock - guest gets nothing, loses satisfaction
+                    g.satisfaction -= 10
+                    DebugConfig.log('engine', f"Guest {g.id} found {previous_target_shop.defn.name} OUT OF STOCK (food), satisfaction -{10}")
+                else:
+                    # Shop has no linked product (shouldn't happen, but handle gracefully)
+                    food_price = previous_target_shop.defn.base_price
+                    self.economy.add_income(food_price)
+                    DebugConfig.log('engine', f"Guest {g.id} finished eating at {previous_target_shop.defn.name} (no product tracking), revenue: ${food_price}")
 
             # Check if guest just finished drinking (state changed from DRINKING to something else)
             if previous_state == "drinking" and g.state != "drinking" and previous_target_shop:
-                # Guest finished drinking, add revenue (guest already paid in tick handler)
-                drink_price = previous_target_shop.defn.base_price
-                self.economy.add_income(drink_price)
-                DebugConfig.log('engine', f"Guest {g.id} finished drinking at {previous_target_shop.defn.name}, revenue: ${drink_price}")
+                # Guest finished drinking - check inventory and consume stock
+                product_id = self.inventory_manager.get_product_for_shop(previous_target_shop.defn.id)
+
+                if product_id and self.inventory_manager.consume_stock(product_id):
+                    # Stock available - complete sale
+                    drink_price = previous_target_shop.defn.base_price
+                    self.economy.add_income(drink_price)
+                    DebugConfig.log('engine', f"Guest {g.id} finished drinking at {previous_target_shop.defn.name}, revenue: ${drink_price}, stock remaining: {self.inventory_manager.get_stock(product_id)}")
+                elif product_id:
+                    # Out of stock - guest gets nothing, loses satisfaction
+                    g.satisfaction -= 10
+                    DebugConfig.log('engine', f"Guest {g.id} found {previous_target_shop.defn.name} OUT OF STOCK (drink), satisfaction -{10}")
+                else:
+                    # Shop has no linked product (shouldn't happen, but handle gracefully)
+                    drink_price = previous_target_shop.defn.base_price
+                    self.economy.add_income(drink_price)
+                    DebugConfig.log('engine', f"Guest {g.id} finished drinking at {previous_target_shop.defn.name} (no product tracking), revenue: ${drink_price}")
 
             # Check if guest just finished riding (state changed from RIDING to EXITING)
             if previous_state == "riding" and g.state == "exiting":
@@ -2615,6 +2707,10 @@ class Game:
         # Draw save/load dialog (highest priority modal)
         self._draw_save_load_dialog()
 
+        # Draw inventory modal (on top of other UI)
+        self.inventory_modal.draw(self.screen, self.inventory_manager, self.economy,
+                                   self.game_year, self.game_month, self.game_day)
+
         pygame.display.flip()
 
     def _get_employee_at_position(self, x, y):
@@ -3221,7 +3317,10 @@ class Game:
             'statistics': {
                 'guests_entered': self.guests_entered,
                 'guests_left': self.guests_left
-            }
+            },
+
+            # Inventory system
+            'inventory': self.inventory_manager.to_dict()
         }
 
         save_path = self.save_load_manager.save_game(game_state, save_name)
@@ -3438,6 +3537,11 @@ class Game:
             stats_data = game_state['statistics']
             self.guests_entered = stats_data.get('guests_entered', 0)
             self.guests_left = stats_data.get('guests_left', 0)
+
+            # Restore inventory system
+            if 'inventory' in game_state:
+                self.inventory_manager.from_dict(game_state['inventory'])
+                DebugConfig.log('engine', "Inventory system restored from save")
 
             # Restore guest references to shops, rides, restrooms
             for guest in self.guests:
