@@ -258,19 +258,46 @@
     - Prix trop élevés = refus d'achat + pénalité satisfaction (-15)
     - Save/load complet du système de prix
 
+36. ✅ **Système économique avancé (prêts + statistiques)**
+    - Statut : Complété
+    - Difficulté : 4/5
+    - **Système de prêts bancaires**:
+      * 3 types de prêts prédéfinis (Petit/Moyen/Grand)
+      * Petit: $5,000 / 30j / +10% → $183/jour
+      * Moyen: $15,000 / 60j / +15% → $287/jour
+      * Grand: $50,000 / 90j / +20% → $667/jour
+      * Limite: 1 seul prêt actif à la fois
+      * Remboursement automatique quotidien
+      * Remboursement anticipé avec intérêts réduits (proportionnels au temps)
+      * Modal UI complète (liste options + détails prêt actif)
+      * Game Over après 90 jours consécutifs avec cash négatif
+    - **Statistiques financières**:
+      * Tracker historique quotidien (365 jours) et mensuel (12 mois)
+      * Modal avec toggle 30 jours / 1 an
+      * Graphiques comparatifs (barres vertes revenus, rouges dépenses)
+      * 3 périodes de stats : Aujourd'hui / Ce Mois / Cette Année
+      * Calcul automatique moyenne/jour, profits
+    - **Indicateurs HUD**:
+      * Cash avec code couleur (rouge négatif, jaune < $1000, vert)
+      * Tendance quotidienne (↗️ profit, ↘️ perte, → neutre)
+      * Alerte budget bas clignotante (⚠️ si < $1,000)
+      * Indicateur prêt actif (💳 montant + jours restants)
+    - **Intégration complète**:
+      * Déduction automatique à minuit in-game
+      * Save/load complet (loan + finance_stats)
+      * Menu Économie : boutons "Prêts" et "Statistiques"
+
 ### Haute priorité
 
-36. **Améliorer le système économique (suite)**
+37. **Objectifs financiers et missions économiques**
     - Difficulté : 3/5
-    - Graphiques de revenus/dépenses au fil du temps
-    - Équilibrage avancé des coûts et revenus
-    - Système de prêts ou objectifs financiers
-    - Statistiques financières détaillées avec historique
-    - Alertes pour budget bas ou tendances négatives
+    - Système d'objectifs avec récompenses
+    - Missions économiques (atteindre X$, maintenir profit Y jours)
+    - Progression et déblocage de contenu
 
 ### Priorité moyenne
 
-37. **Ajouter des animations pour les attractions**
+38. **Ajouter des animations pour les attractions**
     - Difficulté : 3/5
     - Rotation pour carrousel et grande roue
     - Mouvement pour bateau pirate
@@ -279,37 +306,37 @@
 
 ### Priorité basse
 
-37. **Optimiser le pathfinding**
+39. **Optimiser le pathfinding**
     - Difficulté : 4/5
     - Amélioration de l'algorithme A*
     - Gestion des obstacles dynamiques
     - Cache des chemins fréquents
 
-38. **Améliorer l'IA des visiteurs**
+40. **Améliorer l'IA des visiteurs**
     - Difficulté : 5/5
     - Système de groupes (familles, amis)
     - Comportements plus réalistes avancés
     - Note : Système de besoins (faim/soif/toilettes) déjà implémenté ✅
 
-39. **Système météo**
+41. **Système météo**
     - Difficulté : 4/5
     - Conditions météorologiques (soleil, pluie, vent)
     - Impact sur les visiteurs (moins de visiteurs sous la pluie)
     - Impact sur les attractions (certaines ferment sous la pluie)
 
-40. **Système de recherche**
+42. **Système de recherche**
     - Difficulté : 5/5
     - Arbre de recherche technologique
     - Déblocage progressif des attractions
     - Coûts de recherche
 
-41. **Mode campagne**
+43. **Mode campagne**
     - Difficulté : 5/5
     - Scénarios prédéfinis avec objectifs
     - Progression et récompenses
     - Niveaux de difficulté
 
-42. **Mode multijoueur**
+44. **Mode multijoueur**
     - Difficulté : 5/5
     - Architecture réseau
     - Synchronisation du state
@@ -354,12 +381,14 @@
 - ✅ Visiteurs diversifiés (18 emojis avec tons de peau variés)
 - ✅ **Système d'inventaire global** (stock centralisé, commandes, livraisons)
 - ✅ **Système de prix dynamiques** (gestion prix de vente, influence visiteurs)
+- ✅ **Système de prêts bancaires** (3 prêts, remboursement anticipé, game over)
+- ✅ **Statistiques financières** (graphiques 30j/1an, tracker historique complet)
 
 ### Problèmes connus
 - Aucun (système stable)
 
 ### Prochaines étapes recommandées
-1. Améliorer le système économique (graphiques financiers, équilibrage)
+1. Objectifs financiers et missions économiques
 2. Animations des attractions (rotation, mouvement)
 3. Optimiser le pathfinding pour meilleures performances
 4. Ajouter plus de décorations (lampes, statues, fontaines)
@@ -375,6 +404,8 @@
 - `themepark_engine/queues.py` : Système de files d'attente
 - `themepark_engine/inventory.py` : Système d'inventaire et commandes
 - `themepark_engine/pricing.py` : Gestion des prix de vente
+- `themepark_engine/loan.py` : Gestion des prêts bancaires
+- `themepark_engine/finance_stats.py` : Historique et statistiques financières
 - `themepark_engine/map.py` : Grille et types de tuiles
 - `themepark_engine/pathfinding.py` : Algorithme A*
 - `themepark_engine/ui.py` : Interface utilisateur (Toolbar)
@@ -391,4 +422,4 @@
 ---
 *Dernière mise à jour : 2025-11-08*
 *Statut : En développement actif*
-*Version : 0.5.0-alpha*
+*Version : 0.6.0-alpha*

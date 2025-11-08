@@ -4,7 +4,7 @@
 
 OpenPark est une simulation de parc d'attractions en **projection oblique**, développée en Python avec Pygame. Gérez votre parc, construisez des attractions, employez du personnel, et gardez vos visiteurs heureux!
 
-![Version](https://img.shields.io/badge/version-0.5.0--alpha-orange)
+![Version](https://img.shields.io/badge/version-0.6.0--alpha-orange)
 ![Python](https://img.shields.io/badge/python-3.8+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![AI-Powered](https://img.shields.io/badge/AI--Powered-Claude%20%26%20GPT-purple)
@@ -38,6 +38,8 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 - ✅ **Système de sauvegarde/chargement** (sauvegardes complètes, restauration des états)
 - ✅ **Système d'inventaire et commandes** (stock global, livraisons avec délais, inflation annuelle)
 - ✅ **Système de prix dynamiques** (gestion des prix de vente, influence sur comportement visiteurs)
+- ✅ **Système de prêts bancaires** (3 prêts prédéfinis, remboursement anticipé, game over)
+- ✅ **Statistiques financières avancées** (graphiques 30j/1an, historique revenus/dépenses)
 
 **Résultat**: Un moteur de jeu complet et fonctionnel développé entièrement via conversation avec IA! 🚀
 
@@ -119,7 +121,7 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 - **Prix d'entrée du parc** - Configurable via UI ($50 par défaut), refus si budget insuffisant
 - **Revenus** - Prix d'entrée + boutiques + attractions
 - **Dépenses** - Coûts de construction, salaires des employés
-- **Gestion du cash** - Suivi en temps réel des finances
+- **Gestion du cash** - Suivi en temps réel des finances avec code couleur
 - **Stats détaillées** - Visiteurs refusés, revenus total, dépenses
 - **Système d'inventaire global** - Stock centralisé pour tous les produits
   - Commandes avec remises en gros (jusqu'à -25% pour 500+ unités)
@@ -131,6 +133,24 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
   - Calcul automatique des marges bénéficiaires
   - Code couleur selon rentabilité (rouge/orange/jaune/vert)
   - Influence sur acceptation des visiteurs (prix trop élevés = refus d'achat)
+- **Système de prêts bancaires** - 3 types de prêts (Petit/Moyen/Grand)
+  - Petit: $5,000 / 30j / +10% → $183/jour
+  - Moyen: $15,000 / 60j / +15% → $287/jour
+  - Grand: $50,000 / 90j / +20% → $667/jour
+  - Remboursement automatique quotidien
+  - Remboursement anticipé avec intérêts réduits
+  - Limite: 1 seul prêt actif à la fois
+  - Game Over après 90 jours consécutifs avec cash négatif
+- **Statistiques financières** - Historique complet avec graphiques
+  - Tracker quotidien (365 jours) et mensuel (12 mois)
+  - Modal avec vue 30 jours ou 1 an
+  - Graphiques comparatifs revenus vs dépenses
+  - Stats pour 3 périodes: Aujourd'hui / Ce Mois / Cette Année
+- **Indicateurs HUD** - Feedback financier en temps réel
+  - Cash avec code couleur (rouge négatif, jaune < $1000, vert sain)
+  - Tendance quotidienne (↗️ profit, ↘️ perte, → neutre)
+  - Alerte budget bas clignotante (⚠️ si < $1,000)
+  - Indicateur prêt actif (💳 montant restant + jours)
 
 #### ⏰ **Système de temps et gestion**
 - **Temps in-game** - 1 jour = 12 minutes réelles (configurable)
@@ -186,9 +206,11 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
   - Système d'inventaire et commandes avec délais de livraison
   - Gestion des prix de vente avec influence sur visiteurs
   - Inflation annuelle et remises en gros
-  - [ ] Graphiques de revenus/dépenses au fil du temps
-  - [ ] Alertes pour budget bas
-  - [ ] Objectifs financiers
+  - Système de prêts bancaires (3 types, remboursement anticipé)
+  - Graphiques financiers (revenus/dépenses 30j et 1 an)
+  - Alertes budget bas (indicateur HUD clignotant)
+  - Game Over après 90 jours négatifs
+  - [ ] Objectifs financiers (à venir)
 
 #### 🚀 **Priorité MOYENNE (Améliorations majeures)**
 
