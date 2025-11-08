@@ -4,7 +4,7 @@
 
 OpenPark est une simulation de parc d'attractions en **projection oblique**, développée en Python avec Pygame. Gérez votre parc, construisez des attractions, employez du personnel, et gardez vos visiteurs heureux!
 
-![Version](https://img.shields.io/badge/version-0.4.0--alpha-orange)
+![Version](https://img.shields.io/badge/version-0.5.0--alpha-orange)
 ![Python](https://img.shields.io/badge/python-3.8+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![AI-Powered](https://img.shields.io/badge/AI--Powered-Claude%20%26%20GPT-purple)
@@ -36,6 +36,8 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 - ✅ **Système de sprites OpenMoji** (emojis haute qualité, 30+ sprites, diversité visuelle)
 - ✅ **Zoom avec molette** (centré sur curseur, limites intelligentes, sprites adaptatifs)
 - ✅ **Système de sauvegarde/chargement** (sauvegardes complètes, restauration des états)
+- ✅ **Système d'inventaire et commandes** (stock global, livraisons avec délais, inflation annuelle)
+- ✅ **Système de prix dynamiques** (gestion des prix de vente, influence sur comportement visiteurs)
 
 **Résultat**: Un moteur de jeu complet et fonctionnel développé entièrement via conversation avec IA! 🚀
 
@@ -119,6 +121,16 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 - **Dépenses** - Coûts de construction, salaires des employés
 - **Gestion du cash** - Suivi en temps réel des finances
 - **Stats détaillées** - Visiteurs refusés, revenus total, dépenses
+- **Système d'inventaire global** - Stock centralisé pour tous les produits
+  - Commandes avec remises en gros (jusqu'à -25% pour 500+ unités)
+  - Délais de livraison variables (1-30 jours selon quantité)
+  - Animation de progression avec icône colis 📦
+  - Inflation annuelle (+1% à +3% par an en janvier)
+- **Gestion des prix de vente** - Modal dédiée avec contrôle +/- ($0.10 par clic)
+  - Prix min/max recommandés (×1.1 à ×5 du coût)
+  - Calcul automatique des marges bénéficiaires
+  - Code couleur selon rentabilité (rouge/orange/jaune/vert)
+  - Influence sur acceptation des visiteurs (prix trop élevés = refus d'achat)
 
 #### ⏰ **Système de temps et gestion**
 - **Temps in-game** - 1 jour = 12 minutes réelles (configurable)
@@ -170,11 +182,13 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
   - 6 types de décorations pour embellir le parc
   - Support shops 2x2+, fleurs réduites pour cohérence visuelle
 
-- [ ] **Améliorer le système économique**
-  - Graphiques de revenus/dépenses au fil du temps
-  - Équilibrage des coûts et revenus
-  - Alertes pour budget bas
-  - Objectifs financiers
+- [x] **Améliorer le système économique** ✅
+  - Système d'inventaire et commandes avec délais de livraison
+  - Gestion des prix de vente avec influence sur visiteurs
+  - Inflation annuelle et remises en gros
+  - [ ] Graphiques de revenus/dépenses au fil du temps
+  - [ ] Alertes pour budget bas
+  - [ ] Objectifs financiers
 
 #### 🚀 **Priorité MOYENNE (Améliorations majeures)**
 
@@ -274,6 +288,8 @@ openpark/
 │   ├── serpent_queue.py    # Files serpentines
 │   ├── litter.py           # Système de déchets et poubelles
 │   ├── economy.py          # Gestion financière
+│   ├── inventory.py        # Système d'inventaire et commandes
+│   ├── pricing.py          # Gestion des prix de vente
 │   ├── map.py              # Grille de tuiles
 │   ├── pathfinding.py      # Algorithme A*
 │   ├── debug.py            # Système de debug centralisé

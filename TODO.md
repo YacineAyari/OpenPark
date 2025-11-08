@@ -231,19 +231,46 @@
     - Placement simple sur grass, coûts $20-$100
     - Correction: support shops 2x2, fleurs réduites 50%
 
+34. ✅ **Système d'inventaire et gestion des commandes**
+    - Statut : Complété
+    - Difficulté : 4/5
+    - Stock global centralisé pour tous les produits
+    - Système de commandes avec remises en gros (jusqu'à -25% pour 500+ unités)
+    - Délais de livraison variables (1-30 jours selon quantité)
+    - Animation de progression avec icône colis 📦
+    - Inflation annuelle (+1% à +3% par an en janvier)
+    - Modal d'inventaire avec filtrage par shops placés
+    - Intégration complète avec le système de vente
+
+35. ✅ **Système de gestion des prix de vente**
+    - Statut : Complété
+    - Difficulté : 4/5
+    - Modal dédiée avec boutons +/- ($0.10 par clic)
+    - Disposition intuitive: |-| $X.XX |+|
+    - Prix min/max recommandés (×1.1 à ×5 du coût)
+    - Calcul automatique des marges bénéficiaires
+    - Code couleur selon rentabilité (rouge/orange/jaune/vert)
+    - Influence sur comportement visiteurs:
+      * Prix ≤2× coût: 100% acceptation
+      * Prix 2-3× coût: 70-100% acceptation
+      * Prix 3-4× coût: 30-70% acceptation
+      * Prix >4× coût: 5-30% acceptation
+    - Prix trop élevés = refus d'achat + pénalité satisfaction (-15)
+    - Save/load complet du système de prix
+
 ### Haute priorité
 
-34. **Améliorer le système économique**
+36. **Améliorer le système économique (suite)**
     - Difficulté : 3/5
     - Graphiques de revenus/dépenses au fil du temps
-    - Équilibrage des coûts et revenus
+    - Équilibrage avancé des coûts et revenus
     - Système de prêts ou objectifs financiers
-    - Statistiques financières détaillées
-    - Alertes pour budget bas
+    - Statistiques financières détaillées avec historique
+    - Alertes pour budget bas ou tendances négatives
 
 ### Priorité moyenne
 
-35. **Ajouter des animations pour les attractions**
+37. **Ajouter des animations pour les attractions**
     - Difficulté : 3/5
     - Rotation pour carrousel et grande roue
     - Mouvement pour bateau pirate
@@ -325,6 +352,8 @@
 - ✅ Zoom avec molette de souris (centré sur curseur)
 - ✅ Sprites adaptatifs au zoom (scaling automatique)
 - ✅ Visiteurs diversifiés (18 emojis avec tons de peau variés)
+- ✅ **Système d'inventaire global** (stock centralisé, commandes, livraisons)
+- ✅ **Système de prix dynamiques** (gestion prix de vente, influence visiteurs)
 
 ### Problèmes connus
 - Aucun (système stable)
@@ -344,6 +373,8 @@
 - `themepark_engine/shops.py` : Définition et comportement des shops
 - `themepark_engine/employees.py` : Définition et comportement des employés
 - `themepark_engine/queues.py` : Système de files d'attente
+- `themepark_engine/inventory.py` : Système d'inventaire et commandes
+- `themepark_engine/pricing.py` : Gestion des prix de vente
 - `themepark_engine/map.py` : Grille et types de tuiles
 - `themepark_engine/pathfinding.py` : Algorithme A*
 - `themepark_engine/ui.py` : Interface utilisateur (Toolbar)
@@ -358,6 +389,6 @@
 - Debug : logs catégorisés activables/désactivables par entité
 
 ---
-*Dernière mise à jour : 2025-10-13*
+*Dernière mise à jour : 2025-11-08*
 *Statut : En développement actif*
-*Version : 0.3.1-alpha*
+*Version : 0.5.0-alpha*
