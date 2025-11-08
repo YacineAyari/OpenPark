@@ -13,6 +13,7 @@ from .employees import EmployeeDef, Engineer, MaintenanceWorker, SecurityGuard, 
 from .economy import Economy
 from .ui import Toolbar, NegotiationModal
 from .ui_parts.inventory_modal import InventoryModal
+from .ui_parts.price_modal import PriceModal
 from .renderers.iso import IsoRenderer
 from .ui_parts.debug_menu import DebugMenu
 from .queue_v2 import QueueManagerV2
@@ -21,6 +22,7 @@ from .debug import DebugConfig
 from .litter import LitterManager, BinDef, DEFAULT_BIN, Litter
 from .salary_negotiation import SalaryNegotiationManager
 from .inventory import InventoryManager, ProductDef
+from .pricing import PricingManager
 from .save_load import (SaveLoadManager, serialize_grid, serialize_ride, serialize_shop,
                          serialize_employee, serialize_guest, serialize_bin, serialize_litter,
                          serialize_restroom)
@@ -56,6 +58,10 @@ class Game:
         # Load product definitions and initialize inventory system
         product_defs = {p['id']: ProductDef(**p) for p in data.get('products', [])}
         self.inventory_manager = InventoryManager(product_defs)
+
+        # Initialize pricing manager
+        self.pricing_manager = PricingManager()
+
         self.proj_presets = [tuple(p) for p in data.get('projection_presets', [(64,32)])]
         default_proj = tuple(data.get('projection_default', [64,32]))
         default_tilt = float(data.get('tilt_default', 10.0))
@@ -80,6 +86,9 @@ class Game:
 
         # Inventory modal
         self.inventory_modal = InventoryModal(self.font)
+
+        # Price management modal
+        self.price_modal = PriceModal(self.font)
 
         self.dragging=False; self.drag_start=(0,0); self.cam_start=(0,0)
         self.path_dragging=False; self.last_path_pos=None
@@ -517,6 +526,10 @@ class Game:
                                                   self.game_year, self.game_month, self.game_day, self.shops):
                 continue  # Event consumed by inventory modal
 
+            # Price modal handling (priority over other inputs)
+            if self.price_modal.handle_event(e, self.inventory_manager, self.pricing_manager, self.shops):
+                continue  # Event consumed by price modal
+
             if e.type==pygame.KEYDOWN:
                 # Handle text input for save/load dialog
                 if self.save_load_dialog_open and self.save_load_mode == 'save':
@@ -705,6 +718,8 @@ class Game:
                                 self.entrance_fee_panel_open = not self.entrance_fee_panel_open
                             elif clicked=='inventory_modal':
                                 self.inventory_modal.toggle()
+                            elif clicked=='price_modal':
+                                self.price_modal.toggle()
                             elif clicked=='save_game':
                                 self._open_save_dialog()
                             elif clicked=='load_game':
@@ -1296,14 +1311,28 @@ class Game:
 
             # Check if guest just finished shopping (state changed from SHOPPING to something else)
             if previous_state == "shopping" and g.state != "shopping" and previous_shop:
-                # Guest finished shopping - check inventory and consume stock
+                # Guest finished shopping - check inventory and price acceptance
                 product_id = self.inventory_manager.get_product_for_shop(previous_shop.defn.id)
 
-                if product_id and self.inventory_manager.consume_stock(product_id):
-                    # Stock available - complete sale
-                    shop_price = previous_shop.defn.base_price
-                    self.economy.add_income(shop_price)
-                    DebugConfig.log('engine', f"Guest {g.id} finished shopping at {previous_shop.defn.name}, revenue: ${shop_price}, stock remaining: {self.inventory_manager.get_stock(product_id)}")
+                if product_id and self.inventory_manager.has_stock(product_id):
+                    # Stock available - check if guest accepts the price
+                    cost = self.inventory_manager.get_current_cost(product_id)
+                    purchase_probability = self.pricing_manager.get_purchase_probability(product_id, cost)
+
+                    import random
+                    if random.random() <= purchase_probability:
+                        # Guest accepts the price - complete sale
+                        self.inventory_manager.consume_stock(product_id)
+                        shop_price = self.pricing_manager.get_price(product_id, cost)
+                        self.economy.add_income(shop_price)
+                        DebugConfig.log('engine', f"Guest {g.id} bought at {previous_shop.defn.name}, price: ${shop_price:.2f}, acceptance: {purchase_probability*100:.0f}%, stock: {self.inventory_manager.get_stock(product_id)}")
+                        # Apply shopping satisfaction bonus
+                        g.apply_shopping_bonus()
+                    else:
+                        # Guest refuses - price too high
+                        g.satisfaction -= 15  # More penalty than out of stock
+                        shop_price = self.pricing_manager.get_price(product_id, cost)
+                        DebugConfig.log('engine', f"Guest {g.id} REFUSED to buy at {previous_shop.defn.name}, price ${shop_price:.2f} too high (acceptance: {purchase_probability*100:.0f}%), satisfaction -{15}")
                 elif product_id:
                     # Out of stock - guest gets nothing, loses satisfaction
                     g.satisfaction -= 10
@@ -1313,20 +1342,31 @@ class Game:
                     shop_price = previous_shop.defn.base_price
                     self.economy.add_income(shop_price)
                     DebugConfig.log('engine', f"Guest {g.id} finished shopping at {previous_shop.defn.name} (no product tracking), revenue: ${shop_price}")
-
-                # Apply shopping satisfaction bonus
-                g.apply_shopping_bonus()
+                    # Apply shopping satisfaction bonus
+                    g.apply_shopping_bonus()
 
             # Check if guest just finished eating (state changed from EATING to something else)
             if previous_state == "eating" and g.state != "eating" and previous_target_shop:
-                # Guest finished eating - check inventory and consume stock
+                # Guest finished eating - check inventory and price acceptance
                 product_id = self.inventory_manager.get_product_for_shop(previous_target_shop.defn.id)
 
-                if product_id and self.inventory_manager.consume_stock(product_id):
-                    # Stock available - complete sale
-                    food_price = previous_target_shop.defn.base_price
-                    self.economy.add_income(food_price)
-                    DebugConfig.log('engine', f"Guest {g.id} finished eating at {previous_target_shop.defn.name}, revenue: ${food_price}, stock remaining: {self.inventory_manager.get_stock(product_id)}")
+                if product_id and self.inventory_manager.has_stock(product_id):
+                    # Stock available - check if guest accepts the price
+                    cost = self.inventory_manager.get_current_cost(product_id)
+                    purchase_probability = self.pricing_manager.get_purchase_probability(product_id, cost)
+
+                    import random
+                    if random.random() <= purchase_probability:
+                        # Guest accepts the price - complete sale
+                        self.inventory_manager.consume_stock(product_id)
+                        food_price = self.pricing_manager.get_price(product_id, cost)
+                        self.economy.add_income(food_price)
+                        DebugConfig.log('engine', f"Guest {g.id} bought food at {previous_target_shop.defn.name}, price: ${food_price:.2f}, acceptance: {purchase_probability*100:.0f}%, stock: {self.inventory_manager.get_stock(product_id)}")
+                    else:
+                        # Guest refuses - price too high
+                        g.satisfaction -= 15
+                        food_price = self.pricing_manager.get_price(product_id, cost)
+                        DebugConfig.log('engine', f"Guest {g.id} REFUSED to buy food at {previous_target_shop.defn.name}, price ${food_price:.2f} too high (acceptance: {purchase_probability*100:.0f}%), satisfaction -{15}")
                 elif product_id:
                     # Out of stock - guest gets nothing, loses satisfaction
                     g.satisfaction -= 10
@@ -1339,14 +1379,26 @@ class Game:
 
             # Check if guest just finished drinking (state changed from DRINKING to something else)
             if previous_state == "drinking" and g.state != "drinking" and previous_target_shop:
-                # Guest finished drinking - check inventory and consume stock
+                # Guest finished drinking - check inventory and price acceptance
                 product_id = self.inventory_manager.get_product_for_shop(previous_target_shop.defn.id)
 
-                if product_id and self.inventory_manager.consume_stock(product_id):
-                    # Stock available - complete sale
-                    drink_price = previous_target_shop.defn.base_price
-                    self.economy.add_income(drink_price)
-                    DebugConfig.log('engine', f"Guest {g.id} finished drinking at {previous_target_shop.defn.name}, revenue: ${drink_price}, stock remaining: {self.inventory_manager.get_stock(product_id)}")
+                if product_id and self.inventory_manager.has_stock(product_id):
+                    # Stock available - check if guest accepts the price
+                    cost = self.inventory_manager.get_current_cost(product_id)
+                    purchase_probability = self.pricing_manager.get_purchase_probability(product_id, cost)
+
+                    import random
+                    if random.random() <= purchase_probability:
+                        # Guest accepts the price - complete sale
+                        self.inventory_manager.consume_stock(product_id)
+                        drink_price = self.pricing_manager.get_price(product_id, cost)
+                        self.economy.add_income(drink_price)
+                        DebugConfig.log('engine', f"Guest {g.id} bought drink at {previous_target_shop.defn.name}, price: ${drink_price:.2f}, acceptance: {purchase_probability*100:.0f}%, stock: {self.inventory_manager.get_stock(product_id)}")
+                    else:
+                        # Guest refuses - price too high
+                        g.satisfaction -= 15
+                        drink_price = self.pricing_manager.get_price(product_id, cost)
+                        DebugConfig.log('engine', f"Guest {g.id} REFUSED to buy drink at {previous_target_shop.defn.name}, price ${drink_price:.2f} too high (acceptance: {purchase_probability*100:.0f}%), satisfaction -{15}")
                 elif product_id:
                     # Out of stock - guest gets nothing, loses satisfaction
                     g.satisfaction -= 10
@@ -2714,6 +2766,9 @@ class Game:
         self.inventory_modal.draw(self.screen, self.inventory_manager, self.economy,
                                    self.game_year, self.game_month, self.game_day, self.shops)
 
+        # Draw price modal (on top of other UI)
+        self.price_modal.draw(self.screen, self.inventory_manager, self.pricing_manager, self.shops)
+
         pygame.display.flip()
 
     def _get_employee_at_position(self, x, y):
@@ -3323,7 +3378,10 @@ class Game:
             },
 
             # Inventory system
-            'inventory': self.inventory_manager.to_dict()
+            'inventory': self.inventory_manager.to_dict(),
+
+            # Pricing system
+            'pricing': self.pricing_manager.to_dict()
         }
 
         save_path = self.save_load_manager.save_game(game_state, save_name)
@@ -3545,6 +3603,11 @@ class Game:
             if 'inventory' in game_state:
                 self.inventory_manager.from_dict(game_state['inventory'])
                 DebugConfig.log('engine', "Inventory system restored from save")
+
+            # Restore pricing system
+            if 'pricing' in game_state:
+                self.pricing_manager.from_dict(game_state['pricing'])
+                DebugConfig.log('engine', "Pricing system restored from save")
 
             # Restore guest references to shops, rides, restrooms
             for guest in self.guests:
