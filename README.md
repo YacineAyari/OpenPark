@@ -4,7 +4,7 @@
 
 OpenPark est une simulation de parc d'attractions en **projection oblique**, développée en Python avec Pygame. Gérez votre parc, construisez des attractions, employez du personnel, et gardez vos visiteurs heureux!
 
-![Version](https://img.shields.io/badge/version-0.6.0--alpha-orange)
+![Version](https://img.shields.io/badge/version-0.7.0--alpha-orange)
 ![Python](https://img.shields.io/badge/python-3.8+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![AI-Powered](https://img.shields.io/badge/AI--Powered-Claude%20%26%20GPT-purple)
@@ -40,6 +40,7 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 - ✅ **Système de prix dynamiques** (gestion des prix de vente, influence sur comportement visiteurs)
 - ✅ **Système de prêts bancaires** (3 prêts prédéfinis, remboursement anticipé, game over)
 - ✅ **Statistiques financières avancées** (graphiques 30j/1an, historique revenus/dépenses)
+- ✅ **Système météo saisonnier** (soleil/pluie/neige, impact visiteurs, effets visuels)
 
 **Résultat**: Un moteur de jeu complet et fonctionnel développé entièrement via conversation avec IA! 🚀
 
@@ -171,6 +172,27 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 - **Mouvement fluide** - Interpolation smooth des positions (60 FPS)
 - **Retry intelligent** - Visiteurs ne retentent pas immédiatement une queue pleine (30s cooldown)
 - **Sauvegarde/Chargement** - Système complet de save/load avec restauration des états
+
+#### 🌤️ **Système Météo**
+- **3 types de météo** : ☀️ Soleil, 🌧️ Pluie, ❄️ Neige
+- **Probabilités saisonnières** :
+  - Hiver (Déc-Fév) : 50% neige, 30% soleil, 20% pluie
+  - Printemps (Mar-Mai) : 50% soleil, 50% pluie
+  - Été (Jun-Aoû) : 85% soleil, 15% pluie
+  - Automne (Sep-Nov) : 35% soleil, 65% pluie
+- **Changement météo** : Tous les 2 jours in-game
+- **Impact sur spawn visiteurs** :
+  - Soleil : 100% (normal)
+  - Pluie : 50% (moitié moins)
+  - Neige : 30% (très peu)
+- **Satisfaction visiteurs** : Pénalité pour états extérieurs
+  - Pluie : -5 satisfaction/minute
+  - Neige : -10 satisfaction/minute
+- **Effets visuels** :
+  - Overlay coloré (bleu pluie, blanc neige)
+  - Système de particules (200 gouttes/flocons max)
+  - Indicateur HUD avec emoji et tooltip
+- **Démarrage** : Toujours soleil au début
 
 #### 🐛 **Debug & Development**
 - **Système de logging catégorisé** - GUESTS, RIDES, EMPLOYEES, ENGINE, etc.

@@ -306,6 +306,28 @@
 
 ### Priorité basse
 
+41. ✅ **Système météo**
+    - Statut : Complété
+    - Difficulté : 4/5
+    - **3 types de météo** : ☀️ Soleil, 🌧️ Pluie, ❄️ Neige
+    - **Probabilités saisonnières**:
+      * Hiver (Déc-Fév): 50% neige, 30% soleil, 20% pluie
+      * Printemps (Mar-Mai): 50% soleil, 50% pluie
+      * Été (Jun-Aoû): 85% soleil, 15% pluie
+      * Automne (Sep-Nov): 35% soleil, 65% pluie
+    - **Changement météo**: Tous les 2 jours in-game
+    - **Impact spawn visiteurs**: Soleil 100%, Pluie 50%, Neige 30%
+    - **Pénalités satisfaction**: Pluie -5/min, Neige -10/min (extérieur uniquement)
+    - **Effets visuels complets**:
+      * Overlay coloré (bleu pluie, blanc neige, alpha 30)
+      * Système de particules (200 max, rain/snow)
+      * Indicateur HUD avec emoji et tooltip
+    - **Intégration complète**:
+      * Save/load du système météo
+      * Démarrage toujours en soleil
+      * Détection états extérieurs pour pénalités
+      * Configuration JSON complète
+
 39. **Optimiser le pathfinding**
     - Difficulté : 4/5
     - Amélioration de l'algorithme A*
@@ -317,12 +339,6 @@
     - Système de groupes (familles, amis)
     - Comportements plus réalistes avancés
     - Note : Système de besoins (faim/soif/toilettes) déjà implémenté ✅
-
-41. **Système météo**
-    - Difficulté : 4/5
-    - Conditions météorologiques (soleil, pluie, vent)
-    - Impact sur les visiteurs (moins de visiteurs sous la pluie)
-    - Impact sur les attractions (certaines ferment sous la pluie)
 
 42. **Système de recherche**
     - Difficulté : 5/5
@@ -383,6 +399,7 @@
 - ✅ **Système de prix dynamiques** (gestion prix de vente, influence visiteurs)
 - ✅ **Système de prêts bancaires** (3 prêts, remboursement anticipé, game over)
 - ✅ **Statistiques financières** (graphiques 30j/1an, tracker historique complet)
+- ✅ **Système météo saisonnier** (soleil/pluie/neige, particules, impact gameplay)
 
 ### Problèmes connus
 - Aucun (système stable)
@@ -406,6 +423,7 @@
 - `themepark_engine/pricing.py` : Gestion des prix de vente
 - `themepark_engine/loan.py` : Gestion des prêts bancaires
 - `themepark_engine/finance_stats.py` : Historique et statistiques financières
+- `themepark_engine/weather.py` : Système météo avec particules
 - `themepark_engine/map.py` : Grille et types de tuiles
 - `themepark_engine/pathfinding.py` : Algorithme A*
 - `themepark_engine/ui.py` : Interface utilisateur (Toolbar)
@@ -422,4 +440,4 @@
 ---
 *Dernière mise à jour : 2025-11-08*
 *Statut : En développement actif*
-*Version : 0.6.0-alpha*
+*Version : 0.7.0-alpha*
