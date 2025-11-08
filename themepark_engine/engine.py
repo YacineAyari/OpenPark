@@ -26,6 +26,7 @@ from .salary_negotiation import SalaryNegotiationManager
 from .inventory import InventoryManager, ProductDef
 from .pricing import PricingManager
 from .loan import LoanManager
+from .weather import WeatherSystem, WeatherParticleSystem
 from .save_load import (SaveLoadManager, serialize_grid, serialize_ride, serialize_shop,
                          serialize_employee, serialize_guest, serialize_bin, serialize_litter,
                          serialize_restroom)
@@ -101,6 +102,10 @@ class Game:
 
         # Loan manager
         self.loan_manager = LoanManager()
+
+        # Weather system
+        self.weather_system = WeatherSystem()
+        self.weather_particles = WeatherParticleSystem()
 
         self.dragging=False; self.drag_start=(0,0); self.cam_start=(0,0)
         self.path_dragging=False; self.last_path_pos=None
@@ -1107,8 +1112,12 @@ class Game:
 
         self.guest_spawn_timer += dt
 
+        # Apply weather multiplier to spawn rate
+        weather_multiplier = self.weather_system.get_spawn_rate_multiplier()
+        effective_spawn_rate = self.guest_spawn_rate / weather_multiplier if weather_multiplier > 0 else self.guest_spawn_rate
+
         # Spawn a new guest when timer exceeds spawn rate
-        if self.guest_spawn_timer >= self.guest_spawn_rate:
+        if self.guest_spawn_timer >= effective_spawn_rate:
             self.guest_spawn_timer = 0.0  # Reset timer
 
             # Spawn guest at entrance position (with slight random offset for variety)
@@ -1175,12 +1184,17 @@ class Game:
             DebugConfig.log('engine', f"Park closed - evacuating {evacuation_count} guests")
 
     def _on_day_changed(self):
-        """Called when game day changes - advance pending orders, process loans, track finances"""
+        """Called when game day changes - advance pending orders, process loans, track finances, update weather"""
         # Calculate total day number for financial tracking
         total_day = (self.game_year - 1) * 365 + (self.game_month - 1) * 30 + self.game_day
 
         # Start new day in financial tracker
         self.economy.start_new_day(total_day)
+
+        # Update weather system (check for weather change)
+        self.weather_system.tick_day(self.game_day, self.game_month)
+        weather_name = self.weather_system.get_weather_name()
+        DebugConfig.log('engine', f"Weather: {weather_name} (Spawn rate: {self.weather_system.get_spawn_rate_multiplier()*100:.0f}%)")
 
         # Process daily loan payment
         if self.loan_manager.has_active_loan():
@@ -1338,6 +1352,10 @@ class Game:
             self._evacuate_park()
             self.park_just_closed = False
 
+        # Update weather particles (always use real dt, not scaled)
+        screen_w, screen_h = self.screen.get_size()
+        self.weather_particles.update(dt, self.weather_system.current_weather, screen_w, screen_h)
+
         # Spawn guests at park entrance (only if park is open and not paused)
         if self.game_speed > 0:
             self._spawn_guests_at_entrance(dt)
@@ -1363,6 +1381,15 @@ class Game:
             previous_target_shop = g.target_shop
 
             g.tick(scaled_dt)
+
+            # Apply weather satisfaction penalty for outdoor guests
+            # Only apply penalty if guest is in outdoor states (not in shops, rides, or restrooms)
+            outdoor_states = ["wandering", "walking_to_queue", "walking_to_shop", "walking_to_ride",
+                            "walking_to_bin", "walking_to_exit", "queuing"]
+            if g.state in outdoor_states:
+                weather_penalty = self.weather_system.get_satisfaction_penalty()
+                if weather_penalty < 0:  # Only apply if it's actually a penalty
+                    g.satisfaction += weather_penalty * (scaled_dt / 60.0)  # Convert per-minute to per-second
 
             # Check if guest just finished shopping (state changed from SHOPPING to something else)
             if previous_state == "shopping" and g.state != "shopping" and previous_shop:
@@ -2335,6 +2362,18 @@ class Game:
         self.screen.blit(self.font.render(date_text, True, (200, 220, 255)), (x_offset, y))
         x_offset += 110  # Increased width for longer date format
 
+        # Weather indicator
+        weather_emoji = self.weather_system.get_weather_emoji()
+        weather_name = self.weather_system.get_weather_name()
+        spawn_rate = self.weather_system.get_spawn_rate_multiplier() * 100
+        weather_tooltip = f"Météo: {weather_name} - Taux de visiteurs: {spawn_rate:.0f}%"
+        weather_text = self.font.render(weather_emoji, True, (255, 255, 255))
+        self.screen.blit(weather_text, (x_offset, y))
+        # Register tooltip
+        weather_rect = pygame.Rect(x_offset, y, 25, 20)
+        self.hud_icon_rects.append((weather_rect, weather_tooltip))
+        x_offset += 35
+
         # Park status
         park_icon_name = 'open' if self.park_open else 'closed'
         park_status_text = "Park Status - Open" if self.park_open else "Park Status - Closed"
@@ -2870,7 +2909,26 @@ class Game:
         # Draw stats modal (on top of other UI)
         self.stats_modal.draw(self.screen, self.economy.stats_tracker)
 
+        # Draw weather effects (overlay + particles)
+        self._draw_weather_effects()
+
         pygame.display.flip()
+
+    def _draw_weather_effects(self):
+        """Draw weather overlay and particles"""
+        # Draw overlay (subtle tint for rain/snow)
+        if self.weather_system.should_show_overlay():
+            screen_w, screen_h = self.screen.get_size()
+            overlay = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
+
+            color = self.weather_system.get_weather_color()
+            # Very subtle overlay (alpha = 30)
+            overlay.fill((*color, 30))
+            self.screen.blit(overlay, (0, 0))
+
+        # Draw particles (rain/snow)
+        if self.weather_system.should_show_particles():
+            self.weather_particles.draw(self.screen)
 
     def _get_employee_at_position(self, x, y):
         """Get employee at position"""
@@ -3488,7 +3546,10 @@ class Game:
             'loan': self.loan_manager.to_dict(),
 
             # Financial statistics
-            'finance_stats': self.economy.stats_tracker.to_dict()
+            'finance_stats': self.economy.stats_tracker.to_dict(),
+
+            # Weather system
+            'weather': self.weather_system.to_dict()
         }
 
         save_path = self.save_load_manager.save_game(game_state, save_name)
@@ -3725,6 +3786,11 @@ class Game:
             if 'finance_stats' in game_state:
                 self.economy.stats_tracker.from_dict(game_state['finance_stats'])
                 DebugConfig.log('engine', "Financial statistics restored from save")
+
+            # Restore weather system
+            if 'weather' in game_state:
+                self.weather_system.from_dict(game_state['weather'])
+                DebugConfig.log('engine', f"Weather system restored: {self.weather_system.get_weather_name()}")
 
             # Restore guest references to shops, rides, restrooms
             for guest in self.guests:

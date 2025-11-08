@@ -423,5 +423,40 @@
       "category": "food",
       "used_by_shops": ["shop_pizza"]
     }
-  ]
+  ],
+  "weather_system": {
+    "change_interval_days": 2,
+    "spawn_rate_multipliers": {
+      "sunny": 1.0,
+      "rain": 0.5,
+      "snow": 0.3
+    },
+    "satisfaction_penalties": {
+      "sunny": 0.0,
+      "rain": -5.0,
+      "snow": -10.0
+    },
+    "seasonal_probabilities": {
+      "winter": {
+        "sunny": 0.30,
+        "rain": 0.20,
+        "snow": 0.50
+      },
+      "spring": {
+        "sunny": 0.50,
+        "rain": 0.50,
+        "snow": 0.00
+      },
+      "summer": {
+        "sunny": 0.85,
+        "rain": 0.15,
+        "snow": 0.00
+      },
+      "autumn": {
+        "sunny": 0.35,
+        "rain": 0.65,
+        "snow": 0.00
+      }
+    }
+  }
 }
