@@ -14,6 +14,8 @@ from .economy import Economy
 from .ui import Toolbar, NegotiationModal
 from .ui_parts.inventory_modal import InventoryModal
 from .ui_parts.price_modal import PriceModal
+from .ui_parts.loan_modal import LoanModal
+from .ui_parts.stats_modal import StatsModal
 from .renderers.iso import IsoRenderer
 from .ui_parts.debug_menu import DebugMenu
 from .queue_v2 import QueueManagerV2
@@ -23,6 +25,7 @@ from .litter import LitterManager, BinDef, DEFAULT_BIN, Litter
 from .salary_negotiation import SalaryNegotiationManager
 from .inventory import InventoryManager, ProductDef
 from .pricing import PricingManager
+from .loan import LoanManager
 from .save_load import (SaveLoadManager, serialize_grid, serialize_ride, serialize_shop,
                          serialize_employee, serialize_guest, serialize_bin, serialize_litter,
                          serialize_restroom)
@@ -89,6 +92,15 @@ class Game:
 
         # Price management modal
         self.price_modal = PriceModal(self.font)
+
+        # Loan modal
+        self.loan_modal = LoanModal(self.font)
+
+        # Financial statistics modal
+        self.stats_modal = StatsModal(self.font)
+
+        # Loan manager
+        self.loan_manager = LoanManager()
 
         self.dragging=False; self.drag_start=(0,0); self.cam_start=(0,0)
         self.path_dragging=False; self.last_path_pos=None
@@ -530,6 +542,15 @@ class Game:
             if self.price_modal.handle_event(e, self.inventory_manager, self.pricing_manager, self.shops):
                 continue  # Event consumed by price modal
 
+            # Loan modal handling (priority over other inputs)
+            total_day = (self.game_year - 1) * 365 + (self.game_month - 1) * 30 + self.game_day
+            if self.loan_modal.handle_event(e, self.loan_manager, self.economy, total_day):
+                continue  # Event consumed by loan modal
+
+            # Stats modal handling (priority over other inputs)
+            if self.stats_modal.handle_event(e, self.economy.stats_tracker):
+                continue  # Event consumed by stats modal
+
             if e.type==pygame.KEYDOWN:
                 # Handle text input for save/load dialog
                 if self.save_load_dialog_open and self.save_load_mode == 'save':
@@ -720,6 +741,10 @@ class Game:
                                 self.inventory_modal.toggle()
                             elif clicked=='price_modal':
                                 self.price_modal.toggle()
+                            elif clicked=='loan_modal':
+                                self.loan_modal.toggle()
+                            elif clicked=='stats_modal':
+                                self.stats_modal.toggle()
                             elif clicked=='save_game':
                                 self._open_save_dialog()
                             elif clicked=='load_game':
@@ -1150,7 +1175,26 @@ class Game:
             DebugConfig.log('engine', f"Park closed - evacuating {evacuation_count} guests")
 
     def _on_day_changed(self):
-        """Called when game day changes - advance pending orders"""
+        """Called when game day changes - advance pending orders, process loans, track finances"""
+        # Calculate total day number for financial tracking
+        total_day = (self.game_year - 1) * 365 + (self.game_month - 1) * 30 + self.game_day
+
+        # Start new day in financial tracker
+        self.economy.start_new_day(total_day)
+
+        # Process daily loan payment
+        if self.loan_manager.has_active_loan():
+            success, payment = self.loan_manager.process_daily_payment()
+            if success and payment > 0:
+                self.economy.add_expense(payment)
+                DebugConfig.log('engine', f"Loan payment: ${payment:.2f} (Days remaining: {self.loan_manager.active_loan.days_remaining})")
+
+        # Check for game over (90 consecutive days with negative cash)
+        if self.economy.should_game_over():
+            DebugConfig.log('engine', f"GAME OVER: Cash has been negative for {self.economy.negative_cash_days} consecutive days")
+            self._show_game_over()
+
+        # Advance inventory orders
         delivered_orders = self.inventory_manager.tick_day()
 
         # Log deliveries
@@ -1159,6 +1203,17 @@ class Game:
                 product = self.inventory_manager.products.get(order.product_id)
                 product_name = product.name if product else order.product_id
                 DebugConfig.log('engine', f"Order delivered: {order.quantity}x {product_name} (${order.total_cost:.2f})")
+
+    def _show_game_over(self):
+        """Display game over screen"""
+        # For now, just pause the game
+        # TODO: Could add a proper game over modal in the future
+        self.game_speed = 0
+        print("=" * 60)
+        print("GAME OVER!")
+        print(f"Your park has been bankrupt for {self.economy.negative_cash_days} consecutive days.")
+        print(f"Final cash: ${self.economy.cash:.2f}")
+        print("=" * 60)
 
     def _on_year_changed(self):
         """Called when year changes - apply annual inflation in January"""
@@ -2202,9 +2257,49 @@ class Game:
         # Money
         self._draw_hud_icon('money', x_offset, icon_y, "Cash - Your park's money")
         x_offset += 34
-        money_text = f"${self.economy.cash}"
-        self.screen.blit(self.font.render(money_text, True, (255, 220, 100)), (x_offset, y))
-        x_offset += 90
+
+        # Cash with color based on value
+        cash_color = (255, 100, 100) if self.economy.cash < 0 else (255, 220, 100) if self.economy.cash < 1000 else (100, 255, 100)
+        money_text = f"${self.economy.cash:,.0f}"
+        self.screen.blit(self.font.render(money_text, True, cash_color), (x_offset, y))
+        x_offset += 100
+
+        # Daily trend indicator (arrow + amount)
+        today_stats = self.economy.stats_tracker.get_today_stats()
+        today_profit = today_stats['profit']
+        if today_profit > 0:
+            trend_icon = "↗"
+            trend_color = (100, 255, 100)
+        elif today_profit < 0:
+            trend_icon = "↘"
+            trend_color = (255, 100, 100)
+        else:
+            trend_icon = "→"
+            trend_color = (200, 200, 200)
+
+        trend_text = f"{trend_icon} ${abs(today_profit):,.0f}"
+        self.screen.blit(self.font.render(trend_text, True, trend_color), (x_offset, y))
+        x_offset += 80
+
+        # Low budget alert (blinking warning if cash < 1000)
+        if self.economy.cash < 1000:
+            # Blink effect using time
+            import time
+            if int(time.time() * 2) % 2 == 0:  # Blink every 0.5s
+                warning_text = "⚠ Budget bas!"
+                self.screen.blit(self.font.render(warning_text, True, (255, 150, 0)), (x_offset, y))
+            x_offset += 100
+
+        # Active loan indicator
+        if self.loan_manager.has_active_loan():
+            loan_info = self.loan_manager.get_loan_info()
+            loan_text = f"💳 Prêt: ${loan_info['remaining_normal']:,.0f} ({loan_info['days_remaining']}j)"
+            self.screen.blit(self.font.render(loan_text, True, (255, 200, 100)), (x_offset, y))
+            x_offset += 150
+
+        # Separator
+        self.screen.blit(self.font.render("|", True, (100, 100, 100)), (x_offset, y))
+        x_offset += 15
 
         # Guests
         self._draw_hud_icon('guest', x_offset, icon_y, "Guests - Visitors in your park")
@@ -2768,6 +2863,12 @@ class Game:
 
         # Draw price modal (on top of other UI)
         self.price_modal.draw(self.screen, self.inventory_manager, self.pricing_manager, self.shops)
+
+        # Draw loan modal (on top of other UI)
+        self.loan_modal.draw(self.screen, self.loan_manager, self.economy)
+
+        # Draw stats modal (on top of other UI)
+        self.stats_modal.draw(self.screen, self.economy.stats_tracker)
 
         pygame.display.flip()
 
@@ -3381,7 +3482,13 @@ class Game:
             'inventory': self.inventory_manager.to_dict(),
 
             # Pricing system
-            'pricing': self.pricing_manager.to_dict()
+            'pricing': self.pricing_manager.to_dict(),
+
+            # Loan system
+            'loan': self.loan_manager.to_dict(),
+
+            # Financial statistics
+            'finance_stats': self.economy.stats_tracker.to_dict()
         }
 
         save_path = self.save_load_manager.save_game(game_state, save_name)
@@ -3608,6 +3715,16 @@ class Game:
             if 'pricing' in game_state:
                 self.pricing_manager.from_dict(game_state['pricing'])
                 DebugConfig.log('engine', "Pricing system restored from save")
+
+            # Restore loan system
+            if 'loan' in game_state:
+                self.loan_manager.from_dict(game_state['loan'])
+                DebugConfig.log('engine', "Loan system restored from save")
+
+            # Restore financial statistics
+            if 'finance_stats' in game_state:
+                self.economy.stats_tracker.from_dict(game_state['finance_stats'])
+                DebugConfig.log('engine', "Financial statistics restored from save")
 
             # Restore guest references to shops, rides, restrooms
             for guest in self.guests:

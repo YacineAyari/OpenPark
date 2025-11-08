@@ -330,7 +330,9 @@ class Toolbar:
                 'items': [
                     ('Prix d\'entrée', 'entrance_fee_config', 0),
                     ('Inventaire', 'inventory_modal', 0),
-                    ('Prix de vente', 'price_modal', 0)
+                    ('Prix de vente', 'price_modal', 0),
+                    ('Prêts', 'loan_modal', 0),
+                    ('Statistiques', 'stats_modal', 0)
                 ]
             },
             'tools': {
