@@ -6,6 +6,7 @@ Displays stock levels, pending orders, and allows player to place new orders
 import pygame
 from typing import Optional, List
 from ..inventory import InventoryManager, PendingOrder
+from .. import assets
 
 
 class InventoryModal:
@@ -26,6 +27,9 @@ class InventoryModal:
         self.width = 700
         self.height = 500
         self.padding = 20
+
+        # Load package sprite for delivery animation
+        self.package_sprite = assets.load_image("1F4E6.png")  # Package from OpenMoji
 
     def show(self):
         """Show the modal"""
@@ -64,6 +68,15 @@ class InventoryModal:
 
                 # Click outside modal closes it
                 if not (modal_x <= mx <= modal_x + self.width and modal_y <= my <= modal_y + self.height):
+                    self.hide()
+                    return True
+
+                # Close button (X) in top-right corner
+                close_button_size = 30
+                close_button_x = modal_x + self.width - close_button_size - 10
+                close_button_y = modal_y + 10
+                close_button_rect = pygame.Rect(close_button_x, close_button_y, close_button_size, close_button_size)
+                if close_button_rect.collidepoint(mx, my):
                     self.hide()
                     return True
 
@@ -219,6 +232,30 @@ class InventoryModal:
         # Title
         title_surf = self.font.render("Inventory & Orders", True, (255, 255, 255))
         screen.blit(title_surf, (modal_x + self.padding, modal_y + self.padding))
+
+        # Close button (X) in top-right corner
+        close_button_size = 30
+        close_button_x = modal_x + self.width - close_button_size - 10
+        close_button_y = modal_y + 10
+        close_button_rect = pygame.Rect(close_button_x, close_button_y, close_button_size, close_button_size)
+
+        # Check if mouse is hovering over close button
+        mx, my = pygame.mouse.get_pos()
+        is_hovering = close_button_rect.collidepoint(mx, my)
+        button_color = (180, 60, 60) if is_hovering else (120, 40, 40)
+
+        pygame.draw.rect(screen, button_color, close_button_rect)
+        pygame.draw.rect(screen, (200, 200, 200), close_button_rect, 2)
+
+        # Draw X
+        x_color = (255, 255, 255)
+        margin = 8
+        pygame.draw.line(screen, x_color,
+                        (close_button_x + margin, close_button_y + margin),
+                        (close_button_x + close_button_size - margin, close_button_y + close_button_size - margin), 2)
+        pygame.draw.line(screen, x_color,
+                        (close_button_x + close_button_size - margin, close_button_y + margin),
+                        (close_button_x + margin, close_button_y + close_button_size - margin), 2)
 
         # Tabs
         tab_stock_color = (80, 120, 180) if self.active_tab == "stock" else (60, 60, 70)
@@ -380,12 +417,12 @@ class InventoryModal:
             truck_y = road_y - 8
 
             if order.days_remaining > 0:
-                # Truck emoji or simple truck sprite (🚚)
-                truck_text = "🚚"
-                truck_surf = self.font.render(truck_text, True, (255, 200, 80))
-                # Center truck on position
-                truck_rect = truck_surf.get_rect(center=(truck_x, truck_y))
-                screen.blit(truck_surf, truck_rect)
+                # Scale package sprite to fit in the track
+                package_size = 20  # Size for the package sprite
+                package_scaled = pygame.transform.scale(self.package_sprite, (package_size, package_size))
+                # Center package on position
+                package_rect = package_scaled.get_rect(center=(truck_x, truck_y))
+                screen.blit(package_scaled, package_rect)
             else:
                 # Delivered - show checkmark at end
                 check_text = "✓"
