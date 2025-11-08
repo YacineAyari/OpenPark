@@ -328,7 +328,8 @@ class Toolbar:
                 'name': 'Économie',
                 'tooltip': 'Économie - Gestion financière du parc',
                 'items': [
-                    ('Prix d\'entrée', 'entrance_fee_config', 0)
+                    ('Prix d\'entrée', 'entrance_fee_config', 0),
+                    ('Inventaire', 'inventory_modal', 0)
                 ]
             },
             'tools': {

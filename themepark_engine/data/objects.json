@@ -364,7 +364,7 @@
   ],
   "tilt_default": 10.0,
   "time_system": {
-    "month_duration_minutes": 60.0,
+    "month_duration_minutes": 1.0,
     "starting_year": 2025,
     "starting_month": 1,
     "starting_day": 1,

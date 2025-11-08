@@ -19,6 +19,7 @@ class InventoryModal:
         # Order form state
         self.selected_product_id: Optional[str] = None
         self.order_quantity = 100  # Default order quantity
+        self.cached_delivery_days = 0  # Cache delivery days to prevent random changes
         self.slider_dragging = False  # Is quantity slider being dragged
 
         # Modal dimensions
@@ -80,17 +81,21 @@ class InventoryModal:
                 # Handle product "Order" button clicks in stock tab
                 if self.active_tab == "stock" and shops:
                     product_list_y = modal_y + 100
-                    for i, (product_id, product) in enumerate(inventory.products.items()):
+                    visible_index = 0
+                    for product_id, product in inventory.products.items():
                         # Check if player has any shops that use this product
                         has_shop = self._has_shop_for_product(product_id, product, shops)
                         if not has_shop:
                             continue  # Skip if no shops placed
 
-                        button_rect = pygame.Rect(modal_x + 490, product_list_y + i * 50 + 5, 70, 30)
+                        button_rect = pygame.Rect(modal_x + 490, product_list_y + visible_index * 50 + 5, 70, 30)
                         if button_rect.collidepoint(mx, my):
                             self.selected_product_id = product_id
                             self.order_quantity = 100
+                            # Calculate and cache delivery days for this quantity
+                            _, self.cached_delivery_days, _ = inventory.calculate_order_price(product_id, 100)
                             return True
+                        visible_index += 1
 
                 # Handle order form slider and buttons
                 if self.selected_product_id:
@@ -99,9 +104,9 @@ class InventoryModal:
                     form_x = modal_x + (self.width - form_width) // 2
                     form_y = modal_y + (self.height - form_height) // 2
 
-                    # Quantity slider
+                    # Quantity slider (must match coordinates in _draw_order_form!)
                     slider_x = form_x + 120
-                    slider_y = form_y + 60
+                    slider_y = form_y + 85  # Fixed: was 60, but draw uses 85
                     slider_width = 200
                     slider_height = 20
                     slider_rect = pygame.Rect(slider_x, slider_y, slider_width, slider_height)
@@ -110,7 +115,13 @@ class InventoryModal:
                         # Calculate quantity from mouse position on slider
                         ratio = (mx - slider_x) / slider_width
                         ratio = max(0, min(1, ratio))
-                        self.order_quantity = int(10 + ratio * 990)  # 10 to 1000
+                        new_quantity = int(10 + ratio * 990)  # 10 to 1000
+
+                        # Only recalculate delivery if quantity changed significantly (different tier)
+                        if self._get_quantity_tier(new_quantity) != self._get_quantity_tier(self.order_quantity):
+                            _, self.cached_delivery_days, _ = inventory.calculate_order_price(self.selected_product_id, new_quantity)
+
+                        self.order_quantity = new_quantity
                         self.slider_dragging = True
                         return True
 
@@ -119,8 +130,10 @@ class InventoryModal:
                     if confirm_rect.collidepoint(mx, my):
                         total_cost, _, _ = inventory.calculate_order_price(self.selected_product_id, self.order_quantity)
                         if economy.cash >= total_cost:
-                            inventory.place_order(self.selected_product_id, self.order_quantity, year, month, day)
-                            economy.subtract_expense(total_cost)
+                            # Pass cached delivery days to prevent random recalculation
+                            inventory.place_order(self.selected_product_id, self.order_quantity, year, month, day,
+                                                  delivery_days=self.cached_delivery_days)
+                            economy.add_expense(total_cost)  # Deduct cost from cash
                             self.selected_product_id = None
                             self.order_quantity = 100
                         return True
@@ -148,10 +161,32 @@ class InventoryModal:
                 mx = event.pos[0]
                 ratio = (mx - slider_x) / slider_width
                 ratio = max(0, min(1, ratio))
-                self.order_quantity = int(10 + ratio * 990)  # 10 to 1000
+                new_quantity = int(10 + ratio * 990)  # 10 to 1000
+
+                # Only recalculate delivery if quantity tier changed
+                if self._get_quantity_tier(new_quantity) != self._get_quantity_tier(self.order_quantity):
+                    _, self.cached_delivery_days, _ = inventory.calculate_order_price(self.selected_product_id, new_quantity)
+
+                self.order_quantity = new_quantity
                 return True
 
         return False
+
+    def _get_quantity_tier(self, quantity: int) -> int:
+        """
+        Get pricing tier for a quantity (to detect when to recalculate delivery).
+        Returns tier number (0-4).
+        """
+        if quantity <= 50:
+            return 0
+        elif quantity <= 100:
+            return 1
+        elif quantity <= 200:
+            return 2
+        elif quantity <= 500:
+            return 3
+        else:
+            return 4
 
     def _has_shop_for_product(self, product_id: str, product, shops: list) -> bool:
         """Check if player has placed any shop that uses this product"""
@@ -228,34 +263,36 @@ class InventoryModal:
         header4 = self.font.render("Action", True, (200, 200, 200))
         screen.blit(header4, (modal_x + 480, y - 25))
 
-        # Product list
-        for i, (product_id, product) in enumerate(inventory.products.items()):
-            stock = inventory.get_stock(product_id)
-            cost_per_unit = inventory.get_current_cost(product_id)
-
+        # Product list (only show products with shops placed)
+        visible_index = 0
+        for product_id, product in inventory.products.items():
             # Check if player has any shops for this product
             has_shop = self._has_shop_for_product(product_id, product, shops) if shops else False
 
-            # Background highlight
-            if i % 2 == 0:
-                pygame.draw.rect(screen, (50, 50, 60), (modal_x + 20, y, 660, 40))
+            # Skip products without shops (don't display them at all)
+            if not has_shop:
+                continue
 
-            # Color tint for products without shops
-            text_color = (255, 255, 255) if has_shop else (120, 120, 130)
+            stock = inventory.get_stock(product_id)
+            cost_per_unit = inventory.get_current_cost(product_id)
+
+            # Background highlight (use visible_index for alternating colors)
+            if visible_index % 2 == 0:
+                pygame.draw.rect(screen, (50, 50, 60), (modal_x + 20, y, 660, 40))
 
             # Stock color coding
             if stock == 0:
-                stock_color = (255, 80, 80) if has_shop else (120, 40, 40)
+                stock_color = (255, 80, 80)
                 status_icon = "⚠️"
             elif stock < 50:
-                stock_color = (255, 200, 80) if has_shop else (120, 100, 40)
+                stock_color = (255, 200, 80)
                 status_icon = "⚠"
             else:
-                stock_color = (80, 255, 120) if has_shop else (40, 120, 60)
+                stock_color = (80, 255, 120)
                 status_icon = "✓"
 
             # Product name
-            name_surf = self.font.render(f"{status_icon} {product.name}", True, text_color)
+            name_surf = self.font.render(f"{status_icon} {product.name}", True, (255, 255, 255))
             screen.blit(name_surf, (modal_x + 30, y + 10))
 
             # Stock amount
@@ -263,22 +300,18 @@ class InventoryModal:
             screen.blit(stock_surf, (modal_x + 260, y + 10))
 
             # Cost per unit
-            cost_surf = self.font.render(f"${cost_per_unit:.2f}", True, text_color)
+            cost_surf = self.font.render(f"${cost_per_unit:.2f}", True, (200, 200, 200))
             screen.blit(cost_surf, (modal_x + 360, y + 10))
 
-            # Order button (only if shop exists)
-            if has_shop:
-                button_rect = pygame.Rect(modal_x + 490, y + 5, 70, 30)
-                pygame.draw.rect(screen, (80, 150, 80), button_rect)
-                pygame.draw.rect(screen, (120, 200, 120), button_rect, 2)
-                order_text = self.font.render("Order", True, (255, 255, 255))
-                screen.blit(order_text, (modal_x + 500, y + 12))
-            else:
-                # Show "No shop" message instead
-                no_shop_text = self.font.render("No shop", True, (150, 150, 150))
-                screen.blit(no_shop_text, (modal_x + 490, y + 12))
+            # Order button
+            button_rect = pygame.Rect(modal_x + 490, y + 5, 70, 30)
+            pygame.draw.rect(screen, (80, 150, 80), button_rect)
+            pygame.draw.rect(screen, (120, 200, 120), button_rect, 2)
+            order_text = self.font.render("Order", True, (255, 255, 255))
+            screen.blit(order_text, (modal_x + 500, y + 12))
 
             y += 50
+            visible_index += 1
 
         # Inflation info
         inflation_percent = (inventory.inflation_rate - 1.0) * 100
@@ -327,35 +360,49 @@ class InventoryModal:
             cost_surf = self.font.render(f"${order.total_cost:.2f}", True, (255, 200, 100))
             screen.blit(cost_surf, (modal_x + 265, y + 8))
 
-            # Progress bar
+            # Delivery progress with moving truck
             progress_ratio = 1.0 - (order.days_remaining / order.delivery_days)
-            bar_width = 250
-            bar_height = 20
-            bar_x = modal_x + 360
-            bar_y = y + 10
+            track_width = 250
+            track_height = 30
+            track_x = modal_x + 360
+            track_y = y + 5
 
-            # Background bar
-            pygame.draw.rect(screen, (60, 60, 70), (bar_x, bar_y, bar_width, bar_height))
+            # Draw track/road (light gray line)
+            road_y = track_y + track_height // 2
+            pygame.draw.line(screen, (100, 100, 110), (track_x, road_y), (track_x + track_width, road_y), 3)
 
-            # Progress fill
-            fill_width = int(bar_width * progress_ratio)
-            if fill_width > 0:
-                progress_color = (80, 180, 255) if order.days_remaining > 0 else (80, 255, 120)
-                pygame.draw.rect(screen, progress_color, (bar_x, bar_y, fill_width, bar_height))
+            # Draw start and end markers
+            pygame.draw.circle(screen, (180, 180, 190), (track_x, road_y), 5)  # Start
+            pygame.draw.circle(screen, (100, 255, 120), (track_x + track_width, road_y), 5)  # End (green)
 
-            # Border
-            pygame.draw.rect(screen, (120, 120, 140), (bar_x, bar_y, bar_width, bar_height), 2)
+            # Draw truck position
+            truck_x = track_x + int(track_width * progress_ratio)
+            truck_y = road_y - 8
 
-            # Days remaining text
             if order.days_remaining > 0:
-                days_text = f"🚚 {order.days_remaining}/{order.delivery_days} days"
-                days_color = (255, 255, 255)
+                # Truck emoji or simple truck sprite (🚚)
+                truck_text = "🚚"
+                truck_surf = self.font.render(truck_text, True, (255, 200, 80))
+                # Center truck on position
+                truck_rect = truck_surf.get_rect(center=(truck_x, truck_y))
+                screen.blit(truck_surf, truck_rect)
             else:
-                days_text = "✓ Delivered!"
+                # Delivered - show checkmark at end
+                check_text = "✓"
+                check_surf = self.font.render(check_text, True, (120, 255, 150))
+                check_rect = check_surf.get_rect(center=(truck_x, truck_y))
+                screen.blit(check_surf, check_rect)
+
+            # Days remaining text below track
+            if order.days_remaining > 0:
+                days_text = f"{order.days_remaining}/{order.delivery_days} days"
+                days_color = (200, 200, 200)
+            else:
+                days_text = "Delivered!"
                 days_color = (120, 255, 150)
 
             days_surf = self.font.render(days_text, True, days_color)
-            screen.blit(days_surf, (bar_x + 5, bar_y + 3))
+            screen.blit(days_surf, (track_x + track_width // 2 - 30, track_y + track_height + 5))
 
             y += 65
 
@@ -414,8 +461,8 @@ class InventoryModal:
         screen.blit(min_label, (slider_x - 20, slider_y + 3))
         screen.blit(max_label, (slider_x + slider_width + 5, slider_y + 3))
 
-        # Price calculation
-        total_cost, delivery_days, discount_percent = inventory.calculate_order_price(
+        # Price calculation (cost only, use cached delivery days)
+        total_cost, _, discount_percent = inventory.calculate_order_price(
             self.selected_product_id, self.order_quantity
         )
 
@@ -429,11 +476,11 @@ class InventoryModal:
             discount_text = self.font.render(f"(-{discount_percent:.0f}% bulk discount)", True, (120, 255, 150))
             screen.blit(discount_text, (form_x + 120, form_y + 130))
 
-        # Delivery time
+        # Delivery time (use cached value to prevent random changes)
         delivery_label = self.font.render("Delivery:", True, (200, 200, 200))
         screen.blit(delivery_label, (form_x + 20, form_y + 155))
 
-        delivery_value = self.font.render(f"{delivery_days} days", True, (150, 200, 255))
+        delivery_value = self.font.render(f"{self.cached_delivery_days} days", True, (150, 200, 255))
         screen.blit(delivery_value, (form_x + 120, form_y + 155))
 
         # Cash check

@@ -120,22 +120,33 @@ class InventoryManager:
 
         return (total_cost, delivery_days, discount * 100)
 
-    def place_order(self, product_id: str, quantity: int, year: int, month: int, day: int) -> Optional[PendingOrder]:
+    def place_order(self, product_id: str, quantity: int, year: int, month: int, day: int,
+                    delivery_days: int = None) -> Optional[PendingOrder]:
         """
         Place an order for a product.
+
+        Args:
+            product_id: ID of the product to order
+            quantity: Number of units to order
+            year, month, day: Order date
+            delivery_days: Optional fixed delivery time (if None, will calculate randomly)
+
         Returns the PendingOrder if successful, None if product doesn't exist.
         """
         if product_id not in self.products:
             return None
 
-        total_cost, delivery_days, _ = self.calculate_order_price(product_id, quantity)
+        total_cost, calculated_delivery_days, _ = self.calculate_order_price(product_id, quantity)
+
+        # Use provided delivery_days if given, otherwise use calculated (random) one
+        final_delivery_days = delivery_days if delivery_days is not None else calculated_delivery_days
 
         order = PendingOrder(
             product_id=product_id,
             quantity=quantity,
             total_cost=total_cost,
-            delivery_days=delivery_days,
-            days_remaining=delivery_days,
+            delivery_days=final_delivery_days,
+            days_remaining=final_delivery_days,
             order_year=year,
             order_month=month,
             order_day=day

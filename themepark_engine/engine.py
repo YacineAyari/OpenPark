@@ -703,6 +703,8 @@ class Game:
                                 self.debug_menu.toggle()
                             elif clicked=='entrance_fee_config':
                                 self.entrance_fee_panel_open = not self.entrance_fee_panel_open
+                            elif clicked=='inventory_modal':
+                                self.inventory_modal.toggle()
                             elif clicked=='save_game':
                                 self._open_save_dialog()
                             elif clicked=='load_game':
@@ -1252,6 +1254,7 @@ class Game:
 
             # Detect day change for inventory system (orders, inflation)
             if self.game_day != self._prev_game_day:
+                DebugConfig.log('engine', f"DAY CHANGED: {self._prev_game_day} → {self.game_day} ({self.MONTH_NAMES[self.game_month-1]} {self.game_year})")
                 self._on_day_changed()
                 self._prev_game_day = self.game_day
 
