@@ -4,18 +4,19 @@ Notification History Panel - Historique des 20 dernières notifications
 
 import pygame
 from typing import Optional
+from pathlib import Path
 from ..notification import Notification, NotificationType
 
 
 class NotificationPanel:
     """Panneau d'historique des notifications"""
 
-    # Emojis par type
-    TYPE_EMOJIS = {
-        NotificationType.CRITICAL: "🔴",
-        NotificationType.WARNING: "🟠",
-        NotificationType.INFO: "🟡",
-        NotificationType.SUCCESS: "🟢"
+    # Sprites OpenMoji par type
+    TYPE_ICONS = {
+        NotificationType.CRITICAL: "274C.png",   # X rouge
+        NotificationType.WARNING: "26A0.png",     # Panneau d'avertissement
+        NotificationType.INFO: "2139.png",        # Information
+        NotificationType.SUCCESS: "2705.png"      # Checkmark vert
     }
 
     def __init__(self):
@@ -29,6 +30,17 @@ class NotificationPanel:
         self.notification_rects = {}  # notification_id -> rect
         self.scroll_up_rect = None
         self.scroll_down_rect = None
+
+        # Charger les icônes OpenMoji (20x20)
+        self.type_icons = {}
+        assets_path = Path(__file__).parent.parent.parent / "assets" / "openmoji"
+        for notif_type, icon_file in self.TYPE_ICONS.items():
+            icon_path = assets_path / icon_file
+            if icon_path.exists():
+                icon = pygame.image.load(str(icon_path))
+                self.type_icons[notif_type] = pygame.transform.scale(icon, (20, 20))
+            else:
+                print(f"Warning: Icon not found: {icon_path}")
 
     def toggle(self):
         """Toggle la visibilité du panneau"""
@@ -198,10 +210,10 @@ class NotificationPanel:
             pygame.draw.rect(screen, bg_color, notif_rect, border_radius=5)
             pygame.draw.rect(screen, border_color, notif_rect, 2, border_radius=5)
 
-            # Emoji type
-            emoji = self.TYPE_EMOJIS.get(notif.type, "🔔")
-            emoji_render = font.render(emoji, True, (255, 255, 255))
-            screen.blit(emoji_render, (notif_rect.x + 10, notif_rect.y + 10))
+            # Icône OpenMoji
+            icon = self.type_icons.get(notif.type)
+            if icon:
+                screen.blit(icon, (notif_rect.x + 10, notif_rect.y + 23))
 
             # Message
             message_color = (255, 255, 255) if not notif.read else (180, 180, 180)

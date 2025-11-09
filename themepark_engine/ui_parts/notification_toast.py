@@ -4,6 +4,7 @@ Toast Notifications - Affichage temporaire top-right
 
 import pygame
 from typing import List, Optional
+from pathlib import Path
 from ..notification import Notification, NotificationType
 
 
@@ -16,16 +17,27 @@ class NotificationToast:
     TOAST_SPACING = 10
     MAX_VISIBLE = 3
 
-    # Emojis par type
-    TYPE_EMOJIS = {
-        NotificationType.CRITICAL: "🔴",
-        NotificationType.WARNING: "🟠",
-        NotificationType.INFO: "🟡",
-        NotificationType.SUCCESS: "🟢"
+    # Sprites OpenMoji par type
+    TYPE_ICONS = {
+        NotificationType.CRITICAL: "274C.png",   # X rouge
+        NotificationType.WARNING: "26A0.png",     # Panneau d'avertissement
+        NotificationType.INFO: "2139.png",        # Information
+        NotificationType.SUCCESS: "2705.png"      # Checkmark vert
     }
 
     def __init__(self):
         self.active_toasts: List[dict] = []  # {notification, timer, y_offset, alpha}
+
+        # Charger les icônes OpenMoji (24x24)
+        self.type_icons = {}
+        assets_path = Path(__file__).parent.parent.parent / "assets" / "openmoji"
+        for notif_type, icon_file in self.TYPE_ICONS.items():
+            icon_path = assets_path / icon_file
+            if icon_path.exists():
+                icon = pygame.image.load(str(icon_path))
+                self.type_icons[notif_type] = pygame.transform.scale(icon, (24, 24))
+            else:
+                print(f"Warning: Icon not found: {icon_path}")
 
     def add_toast(self, notification: Notification):
         """Ajoute un toast à afficher"""
@@ -121,10 +133,16 @@ class NotificationToast:
             border_color = (*type_color[:3], alpha)
             pygame.draw.rect(toast_surface, border_color, bg_rect, 3, border_radius=8)
 
-            # Emoji type
-            emoji = self.TYPE_EMOJIS.get(notif.type, "🔔")
-            emoji_render = font.render(emoji, True, (255, 255, 255, alpha))
-            toast_surface.blit(emoji_render, (10, 10))
+            # Icône OpenMoji
+            icon = self.type_icons.get(notif.type)
+            if icon:
+                # Appliquer alpha si nécessaire
+                if alpha < 255:
+                    icon_with_alpha = icon.copy()
+                    icon_with_alpha.set_alpha(alpha)
+                    toast_surface.blit(icon_with_alpha, (10, 18))
+                else:
+                    toast_surface.blit(icon, (10, 18))
 
             # Message (word wrap si nécessaire)
             message = notif.message
