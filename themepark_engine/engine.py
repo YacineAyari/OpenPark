@@ -29,6 +29,9 @@ from .pricing import PricingManager
 from .loan import LoanManager
 from .weather import WeatherSystem, WeatherParticleSystem
 from .research import ResearchBureau
+from .notification import NotificationManager, NotificationType
+from .ui_parts.notification_toast import NotificationToast
+from .ui_parts.notification_panel import NotificationPanel
 from .save_load import (SaveLoadManager, serialize_grid, serialize_ride, serialize_shop,
                          serialize_employee, serialize_guest, serialize_bin, serialize_litter,
                          serialize_restroom)
@@ -115,6 +118,13 @@ class Game:
         # Weather system
         self.weather_system = WeatherSystem()
         self.weather_particles = WeatherParticleSystem()
+
+        # Notification system
+        self.notification_manager = NotificationManager()
+        self.notification_toast = NotificationToast()
+        self.notification_panel = NotificationPanel()
+        self.notification_bell_rect = None  # For HUD bell icon click
+        self.notified_broken_rides = set()  # Track which rides we've notified about
 
         self.dragging=False; self.drag_start=(0,0); self.cam_start=(0,0)
         self.path_dragging=False; self.last_path_pos=None
@@ -569,6 +579,26 @@ class Game:
             if self.research_modal.handle_event(e, self.research_bureau):
                 continue  # Event consumed by research modal
 
+            # Notification panel handling
+            clicked_notif = self.notification_panel.handle_event(e, self.notification_manager)
+            if clicked_notif:
+                # Handle clickable notification action
+                if clicked_notif.click_action == "center_camera" and clicked_notif.click_data:
+                    # Center camera on position
+                    pos = clicked_notif.click_data.get('position')
+                    if pos:
+                        gx, gy = pos
+                        tw, th = self.renderer.tile_size()
+                        world_x = (gx + gy * self.renderer._skew) * tw
+                        world_y = gy * th
+                        screen_center_x = self.screen.get_width() // 2
+                        screen_center_y = self.screen.get_height() // 2
+                        self.renderer.camera.offset = (world_x - screen_center_x, world_y - screen_center_y)
+                        self.renderer._recalc()
+                continue
+            if self.notification_panel.visible:
+                continue  # Block other events if panel is visible
+
             if e.type==pygame.KEYDOWN:
                 # Handle text input for save/load dialog
                 if self.save_load_dialog_open and self.save_load_mode == 'save':
@@ -744,6 +774,29 @@ class Game:
                                 if not panel_rect.collidepoint(e.pos):
                                     self.entrance_fee_panel_open = False
                                 continue
+
+                        # Handle notification bell click (open panel)
+                        if self.notification_bell_rect and self.notification_bell_rect.collidepoint(e.pos):
+                            self.notification_panel.toggle()
+                            continue
+
+                        # Handle notification toast clicks
+                        screen_size = self.screen.get_size()
+                        clicked_toast_notif = self.notification_toast.handle_click(e.pos, screen_size)
+                        if clicked_toast_notif:
+                            # Handle clickable toast notification action
+                            if clicked_toast_notif.click_action == "center_camera" and clicked_toast_notif.click_data:
+                                pos = clicked_toast_notif.click_data.get('position')
+                                if pos:
+                                    gx, gy = pos
+                                    tw, th = self.renderer.tile_size()
+                                    world_x = (gx + gy * self.renderer._skew) * tw
+                                    world_y = gy * th
+                                    screen_center_x = self.screen.get_width() // 2
+                                    screen_center_y = self.screen.get_height() // 2
+                                    self.renderer.camera.offset = (world_x - screen_center_x, world_y - screen_center_y)
+                                    self.renderer._recalc()
+                            continue
 
                         gx,gy=self.renderer.screen_to_grid(*e.pos); hover=(gx,gy)
                         # Vérifier si le clic est dans la toolbar ou ses sous-menus
@@ -1394,6 +1447,9 @@ class Game:
         # Update weather particles (always use real dt, not scaled)
         screen_w, screen_h = self.screen.get_size()
         self.weather_particles.update(dt, self.weather_system.current_weather, screen_w, screen_h)
+
+        # Update notification toasts (always use real dt, not scaled)
+        self.notification_toast.update(dt)
 
         # Spawn guests at park entrance (only if park is open and not paused)
         if self.game_speed > 0:
@@ -2448,6 +2504,35 @@ class Game:
         self.hud_icon_rects.append((rd_rect, rd_tooltip))
         x_offset += 35
 
+        # Notification bell indicator
+        bell_emoji = "🔔"
+        unread_count = self.notification_manager.get_unread_count()
+        bell_tooltip = f"Notifications - {unread_count} non lues\nCliquez pour ouvrir l'historique"
+
+        bell_text = self.font.render(bell_emoji, True, (255, 255, 255))
+        self.screen.blit(bell_text, (x_offset, y))
+
+        # Badge with unread count
+        if unread_count > 0:
+            badge_size = 16
+            badge_x = x_offset + 18
+            badge_y = y - 2
+            badge_color = (255, 50, 50)  # Red badge
+            pygame.draw.circle(self.screen, badge_color, (badge_x, badge_y), badge_size // 2)
+            pygame.draw.circle(self.screen, (255, 255, 255), (badge_x, badge_y), badge_size // 2, 1)
+
+            # Badge number
+            badge_font = pygame.font.Font(None, 12)
+            count_text = str(min(unread_count, 99))  # Max 99
+            count_render = badge_font.render(count_text, True, (255, 255, 255))
+            count_rect = count_render.get_rect(center=(badge_x, badge_y))
+            self.screen.blit(count_render, count_rect)
+
+        # Register bell rect for clicking
+        self.notification_bell_rect = pygame.Rect(x_offset, y, 25, 20)
+        self.hud_icon_rects.append((self.notification_bell_rect, bell_tooltip))
+        x_offset += 35
+
         # Park status
         park_icon_name = 'open' if self.park_open else 'closed'
         park_status_text = "Park Status - Open" if self.park_open else "Park Status - Closed"
@@ -2986,10 +3071,68 @@ class Game:
         # Draw research modal (with integrated tabs, on top of other UI)
         self.research_modal.draw(self.screen, self.font, self.research_bureau, self.game_day)
 
+        # Draw notification toasts (top-right, on top of modals)
+        self.notification_toast.draw(self.screen, self.font)
+
+        # Draw notification panel (modal, on top of toasts)
+        self.notification_panel.draw(self.screen, self.font, self.notification_manager)
+
         # Draw weather effects (overlay + particles)
         self._draw_weather_effects()
 
         pygame.display.flip()
+
+    def _add_notification(self, notif_type: NotificationType, message: str,
+                          clickable: bool = False, click_action: str = None,
+                          click_data: dict = None, cooldown_key: str = None,
+                          play_sound: bool = False):
+        """
+        Helper to add notification and display toast
+
+        Args:
+            notif_type: Type of notification (CRITICAL, WARNING, INFO, SUCCESS)
+            message: Message text
+            clickable: If notification is clickable
+            click_action: Action on click ("center_camera", etc.)
+            click_data: Data for the action
+            cooldown_key: Cooldown key to prevent spam
+            play_sound: If True, plays a beep sound for critical notifications
+        """
+        game_time = (self.game_day, self.game_time // 3600 % 24, int(self.game_time % 3600) // 60)
+
+        notif = self.notification_manager.add(
+            notif_type,
+            message,
+            game_time,
+            clickable=clickable,
+            click_action=click_action,
+            click_data=click_data,
+            cooldown_key=cooldown_key
+        )
+
+        if notif:
+            # Add to toast display
+            self.notification_toast.add_toast(notif)
+
+            # Play beep for critical notifications
+            if play_sound and notif_type == NotificationType.CRITICAL:
+                # Simple beep using pygame mixer
+                try:
+                    # Generate a simple beep tone
+                    import numpy as np
+                    sample_rate = 22050
+                    duration = 0.1  # 100ms
+                    frequency = 800  # Hz
+                    t = np.linspace(0, duration, int(sample_rate * duration))
+                    wave = np.sin(2 * np.pi * frequency * t) * 0.3  # 30% volume
+                    wave = (wave * 32767).astype(np.int16)
+                    stereo_wave = np.column_stack((wave, wave))
+
+                    sound = pygame.sndarray.make_sound(stereo_wave)
+                    sound.play()
+                except Exception as e:
+                    # If beep fails, just skip it
+                    pass
 
     def _draw_weather_effects(self):
         """Draw weather overlay and particles"""
@@ -3018,10 +3161,36 @@ class Game:
         """Assign available engineers to broken rides"""
         # Find broken rides that need repair
         broken_rides = [ride for ride in self.rides if ride.is_broken and not ride.being_repaired]
-        
+
+        # Send notifications for newly broken rides
+        for ride in broken_rides:
+            ride_id = id(ride)  # Use object id as unique identifier
+            if ride_id not in self.notified_broken_rides:
+                # New breakdown - send notification
+                self._add_notification(
+                    NotificationType.CRITICAL,
+                    f"{ride.defn.name} en panne !",
+                    clickable=True,
+                    click_action="center_camera",
+                    click_data={'position': (ride.x, ride.y)},
+                    play_sound=True
+                )
+                self.notified_broken_rides.add(ride_id)
+
+        # Remove fixed rides from notified set
+        for ride in self.rides:
+            ride_id = id(ride)
+            if not ride.is_broken and ride_id in self.notified_broken_rides:
+                # Ride repaired - send success notification
+                self._add_notification(
+                    NotificationType.SUCCESS,
+                    f"{ride.defn.name} réparé et opérationnel"
+                )
+                self.notified_broken_rides.discard(ride_id)
+
         # Find idle engineers
         idle_engineers = [emp for emp in self.employees if emp.defn.type == 'engineer' and emp.state == 'idle']
-        
+
         # Debug logging
         if DebugConfig.EMPLOYEES:
             DebugConfig.log('engine', f"Found {len(broken_rides)} broken rides, {len(idle_engineers)} idle engineers")
@@ -3029,7 +3198,7 @@ class Game:
             if self.employees:
                 DebugConfig.log('engine', f"Employee types: {[emp.defn.type for emp in self.employees]}")
                 DebugConfig.log('engine', f"Employee states: {[emp.state for emp in self.employees]}")
-        
+
         # Assign engineers to broken rides
         for i, ride in enumerate(broken_rides):
             if i < len(idle_engineers):
