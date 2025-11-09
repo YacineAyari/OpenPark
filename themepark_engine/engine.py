@@ -126,6 +126,9 @@ class Game:
         self.notification_bell_rect = None  # For HUD bell icon click
         self.notified_broken_rides = set()  # Track which rides we've notified about
 
+        # Load HUD sprites (20x20)
+        self._load_hud_sprites()
+
         self.dragging=False; self.drag_start=(0,0); self.cam_start=(0,0)
         self.path_dragging=False; self.last_path_pos=None
 
@@ -1124,6 +1127,46 @@ class Game:
         """
         return (hover_x - width // 2, hover_y - height // 2)
 
+    def _load_hud_sprites(self):
+        """Load OpenMoji sprites for HUD icons"""
+        from pathlib import Path
+        assets_path = Path(__file__).parent.parent / "assets" / "openmoji"
+        icon_size = (20, 20)
+
+        # Weather sprites
+        self.weather_sprites = {}
+        weather_files = {
+            'sunny': '2600.png',  # Sun
+            'rain': '1F327.png',  # Rain cloud
+            'snow': '2744.png'    # Snowflake
+        }
+
+        for weather_type, sprite_file in weather_files.items():
+            sprite_path = assets_path / sprite_file
+            if sprite_path.exists():
+                icon = pygame.image.load(str(sprite_path))
+                self.weather_sprites[weather_type] = pygame.transform.scale(icon, icon_size)
+            else:
+                print(f"Warning: Weather sprite not found: {sprite_path}")
+
+        # R&D building sprite
+        rd_sprite_path = assets_path / '1F3E2.png'
+        if rd_sprite_path.exists():
+            icon = pygame.image.load(str(rd_sprite_path))
+            self.rd_sprite = pygame.transform.scale(icon, icon_size)
+        else:
+            print(f"Warning: R&D sprite not found: {rd_sprite_path}")
+            self.rd_sprite = None
+
+        # Bell sprite
+        bell_sprite_path = assets_path / '1F514.png'
+        if bell_sprite_path.exists():
+            icon = pygame.image.load(str(bell_sprite_path))
+            self.bell_sprite = pygame.transform.scale(icon, icon_size)
+        else:
+            print(f"Warning: Bell sprite not found: {bell_sprite_path}")
+            self.bell_sprite = None
+
     def _create_park_entrance(self):
         """Create fixed park entrance at south center of map"""
         # Calculate entrance position: south center of map
@@ -1832,7 +1875,7 @@ class Game:
             upgrade = self.research_modal.last_unlocked_upgrade
             self._add_notification(
                 NotificationType.SUCCESS,
-                f"🔬 R&D débloqué : {upgrade.name} ({upgrade.category})"
+                f"R&D débloqué : {upgrade.name} ({upgrade.category})"
             )
             self.research_modal.last_unlocked_upgrade = None  # Clear after notification
 
@@ -2573,19 +2616,25 @@ class Game:
         x_offset += 110  # Increased width for longer date format
 
         # Weather indicator
-        weather_emoji = self.weather_system.get_weather_emoji()
         weather_name = self.weather_system.get_weather_name()
         spawn_rate = self.weather_system.get_spawn_rate_multiplier() * 100
         weather_tooltip = f"Météo: {weather_name} - Taux de visiteurs: {spawn_rate:.0f}%"
-        weather_text = self.font.render(weather_emoji, True, (255, 255, 255))
-        self.screen.blit(weather_text, (x_offset, y))
+
+        # Get weather sprite
+        weather_sprite_key = weather_name.lower().replace('é', 'e')  # "Soleil" -> "soleil" (sunny key)
+        if weather_sprite_key == 'soleil':
+            weather_sprite_key = 'sunny'
+        weather_sprite = self.weather_sprites.get(weather_sprite_key)
+
+        if weather_sprite:
+            self.screen.blit(weather_sprite, (x_offset, y + 2))
+
         # Register tooltip
         weather_rect = pygame.Rect(x_offset, y, 25, 20)
         self.hud_icon_rects.append((weather_rect, weather_tooltip))
         x_offset += 35
 
         # R&D indicator
-        rd_emoji = "🏢"
         rd_budget = self.research_bureau.monthly_budget
         rd_total_alloc = self.research_bureau.get_total_allocation()
         rd_unlocked_count = len(self.research_bureau.unlocked_ids)
@@ -2612,20 +2661,21 @@ class Game:
                 rd_tooltip_lines.append(f"• {name}: {progress*100:.0f}%")
 
         rd_tooltip = "\n".join(rd_tooltip_lines)
-        rd_text = self.font.render(rd_emoji, True, (255, 255, 255))
-        self.screen.blit(rd_text, (x_offset, y))
+
+        if self.rd_sprite:
+            self.screen.blit(self.rd_sprite, (x_offset, y + 2))
+
         # Register tooltip
         rd_rect = pygame.Rect(x_offset, y, 25, 20)
         self.hud_icon_rects.append((rd_rect, rd_tooltip))
         x_offset += 35
 
         # Notification bell indicator
-        bell_emoji = "🔔"
         unread_count = self.notification_manager.get_unread_count()
         bell_tooltip = f"Notifications - {unread_count} non lues\nCliquez pour ouvrir l'historique"
 
-        bell_text = self.font.render(bell_emoji, True, (255, 255, 255))
-        self.screen.blit(bell_text, (x_offset, y))
+        if self.bell_sprite:
+            self.screen.blit(self.bell_sprite, (x_offset, y + 2))
 
         # Badge with unread count
         if unread_count > 0:

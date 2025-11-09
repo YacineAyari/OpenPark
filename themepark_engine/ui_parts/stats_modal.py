@@ -5,6 +5,7 @@ Displays financial stats and graphs (30 days / 1 year)
 
 import pygame
 from typing import List, Dict
+from pathlib import Path
 from ..finance_stats import FinanceStatsTracker
 
 
@@ -27,6 +28,15 @@ class StatsModal:
         self.graph_width = 660
         self.graph_height = 250
         self.graph_padding = 10
+
+        # Load title icon
+        assets_path = Path(__file__).parent.parent.parent / "assets" / "openmoji"
+        icon_path = assets_path / "1F4CA.png"
+        if icon_path.exists():
+            icon = pygame.image.load(str(icon_path))
+            self.title_icon = pygame.transform.scale(icon, (24, 24))
+        else:
+            self.title_icon = None
 
     def show(self):
         """Show the modal"""
@@ -109,8 +119,15 @@ class StatsModal:
         pygame.draw.rect(screen, (100, 100, 120), modal_rect, 3)
 
         # Title
-        title_surf = self.font.render("📊 Statistiques Financières", True, (255, 255, 255))
-        screen.blit(title_surf, (modal_x + self.padding, modal_y + self.padding))
+        title_x = modal_x + self.padding
+        title_y = modal_y + self.padding
+
+        if self.title_icon:
+            screen.blit(self.title_icon, (title_x, title_y + 2))
+            title_x += 30
+
+        title_surf = self.font.render("Statistiques Financières", True, (255, 255, 255))
+        screen.blit(title_surf, (title_x, title_y))
 
         # Close button (X) in top-right corner
         close_button_size = 30

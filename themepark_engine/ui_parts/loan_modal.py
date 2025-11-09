@@ -5,6 +5,7 @@ Allows players to take loans and repay them
 
 import pygame
 from typing import Optional
+from pathlib import Path
 from ..loan import LoanManager, LOAN_TYPES
 
 
@@ -19,6 +20,15 @@ class LoanModal:
         self.width = 650
         self.height = 550
         self.padding = 20
+
+        # Load title icon
+        assets_path = Path(__file__).parent.parent.parent / "assets" / "openmoji"
+        icon_path = assets_path / "1F4B0.png"
+        if icon_path.exists():
+            icon = pygame.image.load(str(icon_path))
+            self.title_icon = pygame.transform.scale(icon, (24, 24))
+        else:
+            self.title_icon = None
 
     def show(self):
         """Show the modal"""
@@ -116,8 +126,15 @@ class LoanModal:
         pygame.draw.rect(screen, (100, 100, 120), modal_rect, 3)
 
         # Title
-        title_surf = self.font.render("💰 Gestion des Prêts", True, (255, 255, 255))
-        screen.blit(title_surf, (modal_x + self.padding, modal_y + self.padding))
+        title_x = modal_x + self.padding
+        title_y = modal_y + self.padding
+
+        if self.title_icon:
+            screen.blit(self.title_icon, (title_x, title_y + 2))
+            title_x += 30
+
+        title_surf = self.font.render("Gestion des Prêts", True, (255, 255, 255))
+        screen.blit(title_surf, (title_x, title_y))
 
         # Close button (X) in top-right corner
         close_button_size = 30
