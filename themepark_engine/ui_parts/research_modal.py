@@ -366,6 +366,15 @@ class ResearchBureauModal:
             daily_render = font.render(daily_text, True, (150, 150, 150))
             screen.blit(daily_render, (modal_x + 360, y_offset))
 
+            # Points accumulés et limite
+            cat_progress = research_bureau.get_category_progress(category)
+            current_pts = cat_progress.get('points', 0)
+            points_cap = cat_progress.get('points_cap', 1000)
+            pts_text = f"{current_pts:.0f}/{points_cap}"
+            pts_color = (255, 150, 50) if current_pts >= points_cap else (150, 200, 255)
+            pts_render = font.render(pts_text, True, pts_color)
+            screen.blit(pts_render, (modal_x + 500, y_offset))
+
             y_offset += 25
 
             # Slider

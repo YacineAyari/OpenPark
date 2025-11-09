@@ -39,11 +39,50 @@ class ResearchCategory:
         self.allocation = 0.0  # Pourcentage du budget (0.0 à 1.0)
         self.points = 0.0  # Points accumulés
 
-    def add_daily_points(self, monthly_budget: int):
-        """Ajoute les points quotidiens selon l'allocation"""
+    def get_points_cap(self, upgrades_list: List[ResearchUpgrade], unlocked_ids: set) -> int:
+        """
+        Calcule la limite dynamique de points basée sur l'upgrade le plus cher débloquable
+
+        Returns:
+            Coût de l'upgrade le plus cher dont les pré-requis sont remplis (min 1000)
+        """
+        max_cost = 0
+        for upgrade in upgrades_list:
+            if upgrade.category == self.name and not upgrade.unlocked:
+                # Vérifier si pré-requis remplis
+                prereqs_met = all(pid in unlocked_ids for pid in upgrade.prerequisites)
+                if prereqs_met:
+                    max_cost = max(max_cost, upgrade.cost)
+
+        # Minimum 1000 si rien de débloquable, sinon le coût max trouvé
+        return max_cost if max_cost > 0 else 1000
+
+    def add_daily_points(self, monthly_budget: int, points_cap: int):
+        """
+        Ajoute les points quotidiens selon l'allocation, sans dépasser la limite
+
+        Args:
+            monthly_budget: Budget mensuel de R&D
+            points_cap: Limite maximale de points pour cette catégorie
+
+        Returns:
+            Nombre de points réellement ajoutés
+        """
+        if self.points >= points_cap:
+            # Déjà au maximum, aucun point ajouté
+            return 0.0
+
         daily_points = (monthly_budget * self.allocation) / 30.0
-        self.points += daily_points
-        return daily_points
+
+        # Ne pas dépasser la limite
+        if self.points + daily_points > points_cap:
+            # Ajuster pour ne pas dépasser
+            actual_points = points_cap - self.points
+            self.points = points_cap
+            return actual_points
+        else:
+            self.points += daily_points
+            return daily_points
 
     def spend_points(self, cost: int):
         """Dépense des points pour un upgrade"""
@@ -150,9 +189,14 @@ class ResearchBureau:
         if self.monthly_budget > 0 and player_cash > 0:
             for category in self.categories.values():
                 if category.allocation > 0:
-                    points_added = category.add_daily_points(self.monthly_budget)
+                    # Calculer la limite dynamique pour cette catégorie
+                    points_cap = category.get_points_cap(self.upgrades, self.unlocked_ids)
+                    points_added = category.add_daily_points(self.monthly_budget, points_cap)
+
                     if points_added > 0:
-                        DebugConfig.log('research', f"{category.name}: +{points_added:.2f} pts (total: {category.points:.2f})")
+                        DebugConfig.log('research', f"{category.name}: +{points_added:.2f} pts (total: {category.points:.2f}/{points_cap})")
+                    elif category.points >= points_cap:
+                        DebugConfig.log('research', f"{category.name}: ⚠️ LIMITE ATTEINTE ({category.points:.0f}/{points_cap}) - Débloquez une amélioration!")
         elif player_cash <= 0:
             DebugConfig.log('research', "⚠️ R&D suspended: No cash available - No points accumulated today")
 
@@ -296,9 +340,13 @@ class ResearchBureau:
                 next_upgrade = upgrade
                 break
 
+        # Calculer la limite dynamique
+        points_cap = cat.get_points_cap(self.upgrades, self.unlocked_ids)
+
         return {
             'allocation': cat.allocation,
             'points': cat.points,
+            'points_cap': points_cap,
             'daily_points': (self.monthly_budget * cat.allocation) / 30.0 if self.monthly_budget > 0 else 0.0,
             'upgrades': category_upgrades,
             'next_upgrade': next_upgrade

@@ -183,13 +183,24 @@ class ResearchProgressModal:
         cat_name, _ = self.CATEGORY_NAMES.get(self.current_category,
                                                (self.current_category, ""))
 
-        # Points accumulés
-        points_text = f"Points accumulés : {cat_data.get('points', 0):.0f} pts"
+        # Points accumulés avec limite dynamique
+        current_points = cat_data.get('points', 0)
+        points_cap = cat_data.get('points_cap', 1000)
         daily_pts = cat_data.get('daily_points', 0)
-        if daily_pts > 0:
-            points_text += f"  (+${daily_pts:.1f}/jour)"
 
-        points_render = font.render(points_text, True, (100, 255, 100))
+        # Afficher points/cap
+        points_text = f"Points accumulés : {current_points:.0f} / {points_cap} pts"
+        if daily_pts > 0:
+            points_text += f"  (+{daily_pts:.1f}/jour)"
+
+        # Couleur selon si limite atteinte
+        if current_points >= points_cap:
+            points_color = (255, 150, 50)  # Orange si limite atteinte
+            points_text += "  ⚠️ LIMITE ATTEINTE"
+        else:
+            points_color = (100, 255, 100)  # Vert normal
+
+        points_render = font.render(points_text, True, points_color)
         screen.blit(points_render, (modal_x + 30, y_offset))
         y_offset += 35
 
