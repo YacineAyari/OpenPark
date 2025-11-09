@@ -433,7 +433,7 @@ class Toolbar:
             elif item_id in self.employee_defs:
                 unlocked_employees = research_bureau.get_unlocked_items('employee')
                 # Starter employees (engineer, maintenance) are always available
-                if item_id in ['emp_engineer', 'emp_maintenance']:
+                if item_id in ['employee_engineer', 'employee_maintenance']:
                     is_unlocked = True
                 elif item_id in unlocked_employees:
                     is_unlocked = True
