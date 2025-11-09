@@ -447,6 +447,13 @@ class ResearchBureauModal:
         total_content_height = len(upgrades) * 90
         self.max_scroll = max(0, total_content_height - scroll_area_h)
 
+        # Find the first locked upgrade that can be unlocked (the one currently in progress)
+        current_research = None
+        for upgrade in upgrades:
+            if not upgrade.unlocked and upgrade.can_unlock(research_bureau.unlocked_ids, 0):
+                current_research = upgrade
+                break
+
         # Draw upgrades
         for upgrade in upgrades:
             # Skip if outside visible area
@@ -497,8 +504,8 @@ class ResearchBureauModal:
             desc_render = font.render(upgrade.description, True, (180, 180, 180))
             screen.blit(desc_render, (upgrade_rect.x + 40, upgrade_rect.y + 50))
 
-            # Progress bar if locked and has enough points
-            if not upgrade.unlocked:
+            # Progress bar ONLY for the current research in progress
+            if not upgrade.unlocked and upgrade == current_research:
                 current_points = cat_data.get('points', 0)
                 if current_points > 0:
                     progress = min(1.0, current_points / upgrade.cost)

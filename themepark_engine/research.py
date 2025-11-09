@@ -81,6 +81,8 @@ class ResearchBureau:
         "infrastructure" # Infrastructure (systèmes globaux)
     ]
 
+    MAX_MONTHLY_BUDGET = 5000  # Budget mensuel maximum
+
     def __init__(self):
         self.monthly_budget = 0  # Budget mensuel alloué à la R&D
         self.categories: Dict[str, ResearchCategory] = {}
@@ -118,8 +120,8 @@ class ResearchBureau:
         DebugConfig.log('research', f"Loaded {len(self.upgrades)} research upgrades")
 
     def set_monthly_budget(self, amount: int):
-        """Définit le budget mensuel de R&D (modifiable à tout moment)"""
-        self.monthly_budget = max(0, amount)
+        """Définit le budget mensuel de R&D (modifiable à tout moment, max $5000)"""
+        self.monthly_budget = max(0, min(amount, self.MAX_MONTHLY_BUDGET))
         DebugConfig.log('research', f"R&D monthly budget set to ${self.monthly_budget}")
 
     def set_category_allocation(self, category: str, percentage: float):
@@ -144,16 +146,18 @@ class ResearchBureau:
             if not success:
                 return False, msg
 
-        # Accumuler les points quotidiens
-        if self.monthly_budget > 0:
+        # Accumuler les points quotidiens SEULEMENT si le joueur a du cash positif
+        if self.monthly_budget > 0 and player_cash >= 0:
             for category in self.categories.values():
                 if category.allocation > 0:
                     points_added = category.add_daily_points(self.monthly_budget)
                     if points_added > 0:
                         DebugConfig.log('research', f"{category.name}: +{points_added:.2f} pts (total: {category.points:.2f})")
 
-        # Vérifier et débloquer automatiquement les upgrades disponibles
-        self._check_and_unlock_upgrades()
+            # Vérifier et débloquer automatiquement les upgrades disponibles
+            self._check_and_unlock_upgrades()
+        elif player_cash < 0:
+            DebugConfig.log('research', "⚠️ R&D suspended: Negative cash - No points accumulated today")
 
         return True, ""
 
