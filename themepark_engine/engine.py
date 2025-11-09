@@ -1905,6 +1905,13 @@ class Game:
     def _open_save_dialog(self):
         """Ouvrir le dialogue de sauvegarde"""
         import time
+
+        # Pause game if not already paused
+        if self.game_speed_before_modal is None:
+            self.game_speed_before_modal = self.game_speed
+            self.game_speed = 0  # Pause
+            DebugConfig.log('engine', f"Game paused for save dialog (was at speed {self.game_speed_before_modal})")
+
         self.save_load_dialog_open = True
         self.save_load_mode = 'save'
         # Use timestamp for default save name
@@ -1914,6 +1921,13 @@ class Game:
     def _open_load_dialog(self):
         """Ouvrir le dialogue de chargement"""
         import os
+
+        # Pause game if not already paused
+        if self.game_speed_before_modal is None:
+            self.game_speed_before_modal = self.game_speed
+            self.game_speed = 0  # Pause
+            DebugConfig.log('engine', f"Game paused for load dialog (was at speed {self.game_speed_before_modal})")
+
         self.save_load_dialog_open = True
         self.save_load_mode = 'load'
         self.save_name_input = ""
@@ -1925,12 +1939,22 @@ class Game:
         else:
             self.available_saves = []
 
-    def _close_save_load_dialog(self):
-        """Fermer le dialogue de sauvegarde/chargement"""
+    def _close_save_load_dialog(self, resume_game=True):
+        """Fermer le dialogue de sauvegarde/chargement
+
+        Args:
+            resume_game: If True, resume the game after closing (default True)
+        """
         self.save_load_dialog_open = False
         self.save_load_mode = None
         self.save_name_input = ""
         self.available_saves = []
+
+        # Resume game if requested and no other modal is open
+        if resume_game and self.game_speed_before_modal is not None and not self.negotiation_modal.visible:
+            self.game_speed = self.game_speed_before_modal
+            self.game_speed_before_modal = None
+            DebugConfig.log('engine', f"Game resumed at speed {self.game_speed}")
 
     def _can_place_shop(self, shop_def, x, y):
         """Vérifier si un shop peut être placé à la position donnée"""
@@ -3703,6 +3727,10 @@ class Game:
         self.loan_modal.visible = False
         self.stats_modal.visible = False
         self.research_modal.visible = False
+
+        # Close save/load dialog if open (don't resume game, negotiation will handle it)
+        if self.save_load_dialog_open:
+            self._close_save_load_dialog(resume_game=False)
 
         # Save current game speed and pause
         if self.game_speed_before_modal is None:
