@@ -1286,11 +1286,10 @@ class Game:
 
         # Notify weather change if different
         if new_weather != old_weather:
-            weather_emoji = self.weather_system.get_weather_emoji()
             spawn_rate = int(self.weather_system.get_spawn_rate_multiplier() * 100)
             self._add_notification(
                 NotificationType.INFO,
-                f"{weather_emoji} Météo : {weather_name} (Visiteurs {spawn_rate}%)"
+                f"Météo : {weather_name} (Visiteurs {spawn_rate}%)"
             )
 
         # Research bureau daily tick (accumulate points + monthly deduction)
@@ -3648,6 +3647,13 @@ class Game:
 
     def _show_negotiation_modal(self, negotiation, employee_type, employee_count):
         """Show negotiation modal and pause the game"""
+        # Close all other modals to prevent conflicts
+        self.inventory_modal.visible = False
+        self.price_modal.visible = False
+        self.loan_modal.visible = False
+        self.stats_modal.visible = False
+        self.research_modal.visible = False
+
         # Save current game speed and pause
         if self.game_speed_before_modal is None:
             self.game_speed_before_modal = self.game_speed

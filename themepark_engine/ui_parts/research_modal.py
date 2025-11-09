@@ -51,6 +51,10 @@ class ResearchBureauModal:
         self.category_icons_small = {}
         self._load_category_icons()
 
+        # Load status icons for upgrades (20x20)
+        self.status_icons = {}
+        self._load_status_icons()
+
     def _load_category_icons(self):
         """Load OpenMoji sprites for categories"""
         from .. import assets
@@ -72,6 +76,25 @@ class ResearchBureauModal:
                 fallback_20.fill((100, 100, 100))
                 self.category_icons[category] = fallback_24
                 self.category_icons_small[category] = fallback_20
+
+    def _load_status_icons(self):
+        """Load OpenMoji sprites for status icons"""
+        assets_path = Path(__file__).parent.parent.parent / "assets" / "openmoji"
+        icon_size = (20, 20)
+
+        status_sprites = {
+            'unlocked': '2705.png',  # ✅ Checkmark
+            'ready': '1F504.png',    # 🔄 Reload/rotation
+            'locked': '1F512.png'    # 🔒 Lock
+        }
+
+        for status, sprite_file in status_sprites.items():
+            sprite_path = assets_path / sprite_file
+            if sprite_path.exists():
+                icon = pygame.image.load(str(sprite_path))
+                self.status_icons[status] = pygame.transform.scale(icon, icon_size)
+            else:
+                print(f"Warning: Status icon not found: {sprite_path}")
 
     def show(self, tab="budget"):
         """Affiche le modal avec un onglet spécifique"""
@@ -501,7 +524,7 @@ class ResearchBureauModal:
             if upgrade.unlocked:
                 bg_color = (50, 100, 50)  # Green for unlocked
                 border_color = (100, 200, 100)
-                status_emoji = "✅"
+                status_key = 'unlocked'
             else:
                 # Check if can unlock
                 can_unlock = upgrade.can_unlock(
@@ -511,20 +534,21 @@ class ResearchBureauModal:
                 if can_unlock:
                     bg_color = (80, 80, 120)  # Blue for ready
                     border_color = (120, 120, 200)
-                    status_emoji = "🔄"
+                    status_key = 'ready'
                     # Register clickable rect for unlocking
                     self.upgrade_rects[upgrade.id] = upgrade_rect
                 else:
                     bg_color = (60, 60, 70)  # Gray for locked
                     border_color = (100, 100, 110)
-                    status_emoji = "🔒"
+                    status_key = 'locked'
 
             pygame.draw.rect(screen, bg_color, upgrade_rect)
             pygame.draw.rect(screen, border_color, upgrade_rect, 2)
 
-            # Status emoji
-            emoji_render = font.render(status_emoji, True, (255, 255, 255))
-            screen.blit(emoji_render, (upgrade_rect.x + 10, upgrade_rect.y + 10))
+            # Status icon
+            status_icon = self.status_icons.get(status_key)
+            if status_icon:
+                screen.blit(status_icon, (upgrade_rect.x + 10, upgrade_rect.y + 10))
 
             # Name
             name_render = font.render(upgrade.name, True, (255, 255, 255))
