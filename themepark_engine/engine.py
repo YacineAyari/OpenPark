@@ -689,7 +689,7 @@ class Game:
                     toolbar_y = screen_height - 48
                     # Vérifier si la souris est dans la toolbar ou ses sous-menus
                     if e.pos[1] >= toolbar_y or self._is_in_toolbar_area(e.pos, screen_height):
-                        self.toolbar.handle_mouse_move(e.pos, screen_height)
+                        self.toolbar.handle_mouse_move(e.pos, screen_height, self.research_bureau)
                 if e.type==pygame.MOUSEBUTTONDOWN:
                     if e.button==2:
                         self.dragging=True; self.drag_start=e.pos; self.cam_start=(self.renderer.camera.x, self.renderer.camera.y)
@@ -759,7 +759,7 @@ class Game:
                         screen_height = self.screen.get_height()
                         toolbar_y = screen_height - 48
                         if e.pos[1] >= toolbar_y or self._is_in_toolbar_area(e.pos, screen_height):
-                            clicked=self.toolbar.handle_click(e.pos, screen_height)
+                            clicked=self.toolbar.handle_click(e.pos, screen_height, self.research_bureau)
                             if clicked=='debug_toggle':
                                 self.debug_menu.toggle()
                             elif clicked=='entrance_fee_config':

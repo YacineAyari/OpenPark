@@ -645,17 +645,16 @@ class Toolbar:
                 free_rect.top = item_y + 8
                 screen.blit(free_surface, free_rect)
     
-    def handle_mouse_move(self, pos, screen_height):
+    def handle_mouse_move(self, pos, screen_height, research_bureau=None):
         """Handle mouse movement for hover effects"""
         toolbar_y = screen_height - 48
         self.hovered_button = None
         self.hovered_subitem = None
-        
+
         # Vérifier si la souris est dans un sous-menu ouvert
         if self.expanded_group and self.expanded_group in self.groups:
-            group_data = self.groups[self.expanded_group]
-            items = group_data['items']
-            
+            items = self.get_filtered_items(self.expanded_group, research_bureau)
+
             if items:
                 group_index = list(self.groups.keys()).index(self.expanded_group)
                 submenu_x = 12 + group_index * 65
@@ -683,14 +682,13 @@ class Toolbar:
                 break
             x += 65
     
-    def handle_click(self, pos, screen_height):
+    def handle_click(self, pos, screen_height, research_bureau=None):
         # Position toolbar en bas de l'écran
         toolbar_y = screen_height - 48
-        
+
         # Vérifier si le clic est dans un sous-menu ouvert
         if self.expanded_group and self.expanded_group in self.groups:
-            group_data = self.groups[self.expanded_group]
-            items = group_data['items']
+            items = self.get_filtered_items(self.expanded_group, research_bureau)
 
             if items:
                 group_index = list(self.groups.keys()).index(self.expanded_group)
