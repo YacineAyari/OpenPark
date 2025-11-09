@@ -153,9 +153,6 @@ class ResearchBureau:
                     points_added = category.add_daily_points(self.monthly_budget)
                     if points_added > 0:
                         DebugConfig.log('research', f"{category.name}: +{points_added:.2f} pts (total: {category.points:.2f})")
-
-            # Vérifier et débloquer automatiquement les upgrades disponibles
-            self._check_and_unlock_upgrades()
         elif player_cash <= 0:
             DebugConfig.log('research', "⚠️ R&D suspended: No cash available - No points accumulated today")
 
@@ -190,24 +187,40 @@ class ResearchBureau:
 
         DebugConfig.log('research', "R&D suspended - all points reset to zero")
 
+    def unlock_upgrade_manual(self, upgrade: ResearchUpgrade) -> Tuple[bool, str]:
+        """
+        Débloque manuellement un upgrade si les conditions sont remplies
+
+        Returns:
+            (success, message)
+        """
+        if upgrade.unlocked:
+            return False, "Already unlocked"
+
+        category = self.categories.get(upgrade.category)
+        if not category:
+            return False, "Invalid category"
+
+        # Vérifier les pré-requis
+        if not upgrade.can_unlock(self.unlocked_ids, category.points):
+            # Vérifier quel est le problème
+            prereqs_met = all(pid in self.unlocked_ids for pid in upgrade.prerequisites)
+            if not prereqs_met:
+                return False, "Pré-requis non remplis"
+            else:
+                return False, f"Points insuffisants ({category.points:.0f}/{upgrade.cost})"
+
+        # Débloquer !
+        category.spend_points(upgrade.cost)
+        upgrade.unlocked = True
+        self.unlocked_ids.add(upgrade.id)
+
+        DebugConfig.log('research', f"🔬 MANUALLY UNLOCKED: {upgrade.name} ({upgrade.category})")
+        return True, f"✅ {upgrade.name} débloqué!"
+
     def _check_and_unlock_upgrades(self):
-        """Vérifie et débloque automatiquement les upgrades disponibles"""
-        for upgrade in self.upgrades:
-            if upgrade.unlocked:
-                continue
-
-            category = self.categories.get(upgrade.category)
-            if not category:
-                continue
-
-            # Vérifier si on peut débloquer
-            if upgrade.can_unlock(self.unlocked_ids, category.points):
-                # Débloquer !
-                category.spend_points(upgrade.cost)
-                upgrade.unlocked = True
-                self.unlocked_ids.add(upgrade.id)
-
-                DebugConfig.log('research', f"🔬 UNLOCKED: {upgrade.name} ({upgrade.category})")
+        """DEPRECATED - Plus utilisé (déblocage manuel seulement)"""
+        pass
 
     def get_upgrade_by_id(self, upgrade_id: str) -> Optional[ResearchUpgrade]:
         """Récupère un upgrade par son ID"""

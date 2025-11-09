@@ -5,6 +5,7 @@ Research Bureau Modal - Gestion du budget et répartition R&D avec onglets
 import pygame
 from typing import Tuple, Optional
 from pathlib import Path
+from ..debug import DebugConfig
 
 
 class ResearchBureauModal:
@@ -42,6 +43,7 @@ class ResearchBureauModal:
         self.max_scroll = 0
         self.scroll_up_rect = None
         self.scroll_down_rect = None
+        self.upgrade_rects = {}  # upgrade_id -> Rect (for click detection)
 
         # Load category icons (24x24 for budget, 20x20 for progress)
         self.category_icons = {}
@@ -134,6 +136,21 @@ class ResearchBureauModal:
                         self.current_progress_category = category
                         self.scroll_offset = 0
                         return True
+
+                # Upgrade clicks (for manual unlock)
+                for upgrade_id, rect in self.upgrade_rects.items():
+                    if rect.collidepoint(mouse_x, mouse_y):
+                        # Find the upgrade object
+                        upgrade = research_bureau.get_upgrade_by_id(upgrade_id)
+                        if upgrade and not upgrade.unlocked:
+                            cat_data = research_bureau.get_category_progress(self.current_progress_category)
+                            # Check if can unlock
+                            if upgrade.can_unlock(research_bureau.unlocked_ids, cat_data.get('points', 0)):
+                                # Try to unlock
+                                success, message = research_bureau.unlock_upgrade_manual(upgrade)
+                                if success:
+                                    DebugConfig.log('research', message)
+                                return True
 
                 # Scroll buttons
                 if self.scroll_up_rect and self.scroll_up_rect.collidepoint(mouse_x, mouse_y):
@@ -454,6 +471,9 @@ class ResearchBureauModal:
                 current_research = upgrade
                 break
 
+        # Clear upgrade rects for this frame
+        self.upgrade_rects = {}
+
         # Draw upgrades
         for upgrade in upgrades:
             # Skip if outside visible area
@@ -465,6 +485,7 @@ class ResearchBureauModal:
             upgrade_rect = pygame.Rect(modal_x + 30, content_y, modal_w - 60, 80)
 
             # Background color based on status
+            can_unlock = False
             if upgrade.unlocked:
                 bg_color = (50, 100, 50)  # Green for unlocked
                 border_color = (100, 200, 100)
@@ -479,6 +500,8 @@ class ResearchBureauModal:
                     bg_color = (80, 80, 120)  # Blue for ready
                     border_color = (120, 120, 200)
                     status_emoji = "🔄"
+                    # Register clickable rect for unlocking
+                    self.upgrade_rects[upgrade.id] = upgrade_rect
                 else:
                     bg_color = (60, 60, 70)  # Gray for locked
                     border_color = (100, 100, 110)
@@ -540,6 +563,23 @@ class ResearchBureauModal:
                 if all_met:
                     prereq_render = font.render("Pré-requis : ✅", True, (100, 255, 100))
                 screen.blit(prereq_render, (upgrade_rect.x + 40, upgrade_rect.y + 65))
+
+            # Unlock button (if can unlock)
+            if can_unlock:
+                btn_width = 120
+                btn_height = 30
+                btn_x = upgrade_rect.right - btn_width - 10
+                btn_y = upgrade_rect.y + 45
+                btn_rect = pygame.Rect(btn_x, btn_y, btn_width, btn_height)
+
+                # Button background with hover effect
+                pygame.draw.rect(screen, (100, 200, 100), btn_rect)
+                pygame.draw.rect(screen, (150, 255, 150), btn_rect, 2)
+
+                # Button text
+                btn_text = font.render("DÉBLOQUER", True, (255, 255, 255))
+                text_rect = btn_text.get_rect(center=btn_rect.center)
+                screen.blit(btn_text, text_rect)
 
             content_y += 90
 
