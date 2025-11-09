@@ -109,17 +109,17 @@ class NotificationToast:
             # Créer surface avec alpha
             toast_surface = pygame.Surface((self.TOAST_WIDTH, self.TOAST_HEIGHT), pygame.SRCALPHA)
 
-            # Background avec couleur du type
-            bg_color = notif.type.value[1]  # Couleur RGB du type
+            # Couleur du type pour la bordure
+            type_color = notif.type.value[1]  # Couleur RGB du type
             bg_rect = pygame.Rect(0, 0, self.TOAST_WIDTH, self.TOAST_HEIGHT)
 
-            # Background sombre semi-transparent
-            dark_bg = (*bg_color[:3], int(200 * alpha / 255))
+            # Background sombre uniforme pour lisibilité
+            dark_bg = (40, 40, 50, int(240 * alpha / 255))
             pygame.draw.rect(toast_surface, dark_bg, bg_rect, border_radius=8)
 
-            # Bordure colorée
-            border_color = (*bg_color[:3], alpha)
-            pygame.draw.rect(toast_surface, border_color, bg_rect, 2, border_radius=8)
+            # Bordure colorée épaisse selon le type (3px)
+            border_color = (*type_color[:3], alpha)
+            pygame.draw.rect(toast_surface, border_color, bg_rect, 3, border_radius=8)
 
             # Emoji type
             emoji = self.TYPE_EMOJIS.get(notif.type, "🔔")
