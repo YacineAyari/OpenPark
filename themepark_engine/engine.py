@@ -17,7 +17,6 @@ from .ui_parts.price_modal import PriceModal
 from .ui_parts.loan_modal import LoanModal
 from .ui_parts.stats_modal import StatsModal
 from .ui_parts.research_modal import ResearchBureauModal
-from .ui_parts.research_progress_modal import ResearchProgressModal
 from .renderers.iso import IsoRenderer
 from .ui_parts.debug_menu import DebugMenu
 from .queue_v2 import QueueManagerV2
@@ -110,9 +109,8 @@ class Game:
         self.research_bureau = ResearchBureau()
         self.research_bureau.load_upgrades_from_config(data)
 
-        # Research modals
+        # Research modal (with integrated tabs)
         self.research_modal = ResearchBureauModal()
-        self.research_progress_modal = ResearchProgressModal()
 
         # Weather system
         self.weather_system = WeatherSystem()
@@ -567,16 +565,9 @@ class Game:
             if self.stats_modal.handle_event(e, self.economy.stats_tracker):
                 continue  # Event consumed by stats modal
 
-            # Research modals handling (priority over other inputs)
-            result = self.research_modal.handle_event(e, self.research_bureau)
-            if result == 'open_progress':
-                self.research_progress_modal.show()
-                continue
-            elif result:
+            # Research modal handling (with integrated tabs)
+            if self.research_modal.handle_event(e, self.research_bureau):
                 continue  # Event consumed by research modal
-
-            if self.research_progress_modal.handle_event(e, self.research_bureau):
-                continue  # Event consumed by research progress modal
 
             if e.type==pygame.KEYDOWN:
                 # Handle text input for save/load dialog
@@ -2992,9 +2983,8 @@ class Game:
         # Draw stats modal (on top of other UI)
         self.stats_modal.draw(self.screen, self.economy.stats_tracker)
 
-        # Draw research modals (on top of other UI)
+        # Draw research modal (with integrated tabs, on top of other UI)
         self.research_modal.draw(self.screen, self.font, self.research_bureau, self.game_day)
-        self.research_progress_modal.draw(self.screen, self.font, self.research_bureau)
 
         # Draw weather effects (overlay + particles)
         self._draw_weather_effects()
