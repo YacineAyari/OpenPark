@@ -4,7 +4,7 @@
 
 OpenPark est une simulation de parc d'attractions en **projection oblique**, développée en Python avec Pygame. Gérez votre parc, construisez des attractions, employez du personnel, et gardez vos visiteurs heureux!
 
-![Version](https://img.shields.io/badge/version-0.7.0--alpha-orange)
+![Version](https://img.shields.io/badge/version-0.8.0--alpha-orange)
 ![Python](https://img.shields.io/badge/python-3.8+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![AI-Powered](https://img.shields.io/badge/AI--Powered-Claude%20%26%20GPT-purple)
@@ -41,6 +41,7 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 - ✅ **Système de prêts bancaires** (3 prêts prédéfinis, remboursement anticipé, game over)
 - ✅ **Statistiques financières avancées** (graphiques 30j/1an, historique revenus/dépenses)
 - ✅ **Système météo saisonnier** (soleil/pluie/neige, impact visiteurs, effets visuels)
+- ✅ **Bureau de R&D complet** (budget mensuel, répartition par catégorie, 38 upgrades débloquables)
 
 **Résultat**: Un moteur de jeu complet et fonctionnel développé entièrement via conversation avec IA! 🚀
 
@@ -193,6 +194,34 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
   - Système de particules (200 gouttes/flocons max)
   - Indicateur HUD avec emoji et tooltip
 - **Démarrage** : Toujours soleil au début
+
+#### 🏢 **Bureau de R&D (Recherche & Développement)**
+- **Budget mensuel** : Le joueur définit un budget alloué à la R&D (prélevé le 1er de chaque mois)
+- **Répartition dynamique** : 6 catégories de recherche avec allocation personnalisable
+  - 👥 **Visiteurs** : Spawn rate, satisfaction, budget visiteurs, tolérance météo
+  - 🎢 **Attractions** : Déblocage nouvelles attractions, fiabilité, capacité, efficacité
+  - 🏪 **Shops** : Déblocage nouveaux shops, coûts d'achat, qualité, litter
+  - 👔 **Employés** : Efficacité, vitesse, salaires, formation
+  - 🌳 **Décorations** : Déblocage décorations, aura satisfaction
+  - 🏗️ **Infrastructure** : Toilettes avancées, capacité files, Fast Pass
+- **38 upgrades débloquables** :
+  - **7 upgrades Visiteurs** : Marketing +10%, +20% spawn, Satisfaction +5, Budget +10%, Tolérance prix -10%, Météo -25%, VIP Program
+  - **8 upgrades Attractions** : 4 nouvelles attractions (Ferris Wheel, Train, Ship, Circus), Pannes -20%/-50%, Capacité +15%, Durée -15%
+  - **11 upgrades Shops** : 8 nouveaux shops débloquables, Coûts -10%, Satisfaction +5, Litter -30%
+  - **4 upgrades Employés** : Efficacité +15%/+40%, Vitesse +20%, Salaires -10%
+  - **5 upgrades Décorations** : 4 types débloquables (arbres, fleurs, drapeaux, lampadaires), Aura +2 satisfaction
+  - **3 upgrades Infrastructure** : Toilettes avancées, Files +25% capacité, Fast Pass
+- **Système de points** : Accumulation quotidienne selon l'allocation
+  - Formule : `points/jour = (budget_mensuel × pourcentage_catégorie) / 30`
+  - Déblocage automatique dès que les points requis sont atteints
+- **Pré-requis** : Certains upgrades nécessitent d'autres upgrades avant d'être débloqués
+- **Starter items** : Au lancement, seulement 2 attractions, 2 shops, 2 employés et 1 toilette sont disponibles
+- **Suspension R&D** : Si budget insuffisant le 1er du mois → tous les points sont perdus !
+- **Interface complète** :
+  - Modal "Bureau de R&D" : Gestion budget + répartition avec sliders
+  - Modal "Progrès Recherche" : Arbre tech, barres de progression, pré-requis
+  - Indicateur HUD 🏢 : Budget, upgrades débloqués, progrès actifs
+- **Save/Load** : État complet de la recherche sauvegardé
 
 #### 🐛 **Debug & Development**
 - **Système de logging catégorisé** - GUESTS, RIDES, EMPLOYEES, ENGINE, etc.

@@ -16,6 +16,8 @@ from .ui_parts.inventory_modal import InventoryModal
 from .ui_parts.price_modal import PriceModal
 from .ui_parts.loan_modal import LoanModal
 from .ui_parts.stats_modal import StatsModal
+from .ui_parts.research_modal import ResearchBureauModal
+from .ui_parts.research_progress_modal import ResearchProgressModal
 from .renderers.iso import IsoRenderer
 from .ui_parts.debug_menu import DebugMenu
 from .queue_v2 import QueueManagerV2
@@ -27,6 +29,7 @@ from .inventory import InventoryManager, ProductDef
 from .pricing import PricingManager
 from .loan import LoanManager
 from .weather import WeatherSystem, WeatherParticleSystem
+from .research import ResearchBureau
 from .save_load import (SaveLoadManager, serialize_grid, serialize_ride, serialize_shop,
                          serialize_employee, serialize_guest, serialize_bin, serialize_litter,
                          serialize_restroom)
@@ -102,6 +105,14 @@ class Game:
 
         # Loan manager
         self.loan_manager = LoanManager()
+
+        # Research Bureau
+        self.research_bureau = ResearchBureau()
+        self.research_bureau.load_upgrades_from_config(data)
+
+        # Research modals
+        self.research_modal = ResearchBureauModal()
+        self.research_progress_modal = ResearchProgressModal()
 
         # Weather system
         self.weather_system = WeatherSystem()
@@ -556,6 +567,17 @@ class Game:
             if self.stats_modal.handle_event(e, self.economy.stats_tracker):
                 continue  # Event consumed by stats modal
 
+            # Research modals handling (priority over other inputs)
+            result = self.research_modal.handle_event(e, self.research_bureau)
+            if result == 'open_progress':
+                self.research_progress_modal.show()
+                continue
+            elif result:
+                continue  # Event consumed by research modal
+
+            if self.research_progress_modal.handle_event(e, self.research_bureau):
+                continue  # Event consumed by research progress modal
+
             if e.type==pygame.KEYDOWN:
                 # Handle text input for save/load dialog
                 if self.save_load_dialog_open and self.save_load_mode == 'save':
@@ -750,6 +772,8 @@ class Game:
                                 self.loan_modal.toggle()
                             elif clicked=='stats_modal':
                                 self.stats_modal.toggle()
+                            elif clicked=='research_modal':
+                                self.research_modal.toggle()
                             elif clicked=='save_game':
                                 self._open_save_dialog()
                             elif clicked=='load_game':
@@ -1112,9 +1136,11 @@ class Game:
 
         self.guest_spawn_timer += dt
 
-        # Apply weather multiplier to spawn rate
+        # Apply weather multiplier and research multiplier to spawn rate
         weather_multiplier = self.weather_system.get_spawn_rate_multiplier()
-        effective_spawn_rate = self.guest_spawn_rate / weather_multiplier if weather_multiplier > 0 else self.guest_spawn_rate
+        research_spawn_mult = self.research_bureau.get_modifier('spawn_rate_multiplier')
+        combined_multiplier = weather_multiplier * research_spawn_mult
+        effective_spawn_rate = self.guest_spawn_rate / combined_multiplier if combined_multiplier > 0 else self.guest_spawn_rate
 
         # Spawn a new guest when timer exceeds spawn rate
         if self.guest_spawn_timer >= effective_spawn_rate:
@@ -1128,6 +1154,15 @@ class Game:
 
             # Create potential guest and check if they can afford entrance fee
             new_guest = Guest(spawn_x, spawn_y)
+
+            # Apply research bonuses
+            base_satisfaction_bonus = self.research_bureau.get_modifier('base_satisfaction')
+            visitor_budget_mult = self.research_bureau.get_modifier('visitor_budget_multiplier')
+
+            new_guest.satisfaction += base_satisfaction_bonus
+            new_guest.budget = int(new_guest.budget * visitor_budget_mult)
+            new_guest.money = new_guest.budget  # Update money too
+
             entrance_fee = self.economy.park_entrance_fee
 
             # Check if guest can afford entrance fee
@@ -1195,6 +1230,19 @@ class Game:
         self.weather_system.tick_day(self.game_day, self.game_month)
         weather_name = self.weather_system.get_weather_name()
         DebugConfig.log('engine', f"Weather: {weather_name} (Spawn rate: {self.weather_system.get_spawn_rate_multiplier()*100:.0f}%)")
+
+        # Research bureau daily tick (accumulate points + monthly deduction)
+        success, message = self.research_bureau.tick_day(self.game_day, self.game_month, self.economy.cash)
+        if not success:
+            # R&D suspended due to insufficient funds
+            DebugConfig.log('engine', message)
+            # Deduct the failed budget from cash (budget was not paid)
+            # No deduction happens, just points are reset
+        else:
+            # Deduct monthly budget if it was the 1st of the month
+            if self.game_day == 1 and self.research_bureau.monthly_budget > 0:
+                self.economy.add_expense(self.research_bureau.monthly_budget)
+                DebugConfig.log('engine', f"R&D Budget deducted: ${self.research_bureau.monthly_budget}")
 
         # Process daily loan payment
         if self.loan_manager.has_active_loan():
@@ -2374,6 +2422,41 @@ class Game:
         self.hud_icon_rects.append((weather_rect, weather_tooltip))
         x_offset += 35
 
+        # R&D indicator
+        rd_emoji = "🏢"
+        rd_budget = self.research_bureau.monthly_budget
+        rd_total_alloc = self.research_bureau.get_total_allocation()
+        rd_unlocked_count = len(self.research_bureau.unlocked_ids)
+
+        # Build tooltip with active research info
+        rd_tooltip_lines = [f"R&D: ${rd_budget}/mois ({rd_total_alloc*100:.0f}% alloué)"]
+        rd_tooltip_lines.append(f"{rd_unlocked_count} upgrades débloqués")
+
+        # Show next upgrade close to completion (if any)
+        next_upgrades = []
+        for category in self.research_bureau.categories.values():
+            if category.points > 0:
+                # Find next unlockable upgrade in this category
+                for upgrade in self.research_bureau.upgrades:
+                    if upgrade.category == category.name and not upgrade.unlocked:
+                        if upgrade.can_unlock(self.research_bureau.unlocked_ids, 0):
+                            progress = category.points / upgrade.cost
+                            if progress >= 0.5:  # Show if >= 50%
+                                next_upgrades.append((upgrade.name, progress))
+                                break
+
+        if next_upgrades:
+            for name, progress in next_upgrades[:2]:  # Max 2
+                rd_tooltip_lines.append(f"• {name}: {progress*100:.0f}%")
+
+        rd_tooltip = "\n".join(rd_tooltip_lines)
+        rd_text = self.font.render(rd_emoji, True, (255, 255, 255))
+        self.screen.blit(rd_text, (x_offset, y))
+        # Register tooltip
+        rd_rect = pygame.Rect(x_offset, y, 25, 20)
+        self.hud_icon_rects.append((rd_rect, rd_tooltip))
+        x_offset += 35
+
         # Park status
         park_icon_name = 'open' if self.park_open else 'closed'
         park_status_text = "Park Status - Open" if self.park_open else "Park Status - Closed"
@@ -2872,7 +2955,7 @@ class Game:
         num_restrooms = len(self.restrooms)
 
         # Dessiner la toolbar et ses sous-menus au premier plan
-        self.toolbar.draw(self.screen)
+        self.toolbar.draw(self.screen, self.research_bureau)
         self.debug_menu.draw(self.screen)
 
         # Draw negotiation modal (on top of everything)
@@ -2908,6 +2991,10 @@ class Game:
 
         # Draw stats modal (on top of other UI)
         self.stats_modal.draw(self.screen, self.economy.stats_tracker)
+
+        # Draw research modals (on top of other UI)
+        self.research_modal.draw(self.screen, self.font, self.research_bureau, self.game_day)
+        self.research_progress_modal.draw(self.screen, self.font, self.research_bureau)
 
         # Draw weather effects (overlay + particles)
         self._draw_weather_effects()
@@ -3549,7 +3636,10 @@ class Game:
             'finance_stats': self.economy.stats_tracker.to_dict(),
 
             # Weather system
-            'weather': self.weather_system.to_dict()
+            'weather': self.weather_system.to_dict(),
+
+            # Research bureau
+            'research': self.research_bureau.to_dict()
         }
 
         save_path = self.save_load_manager.save_game(game_state, save_name)
@@ -3791,6 +3881,11 @@ class Game:
             if 'weather' in game_state:
                 self.weather_system.from_dict(game_state['weather'])
                 DebugConfig.log('engine', f"Weather system restored: {self.weather_system.get_weather_name()}")
+
+            # Restore research bureau
+            if 'research' in game_state:
+                self.research_bureau.from_dict(game_state['research'])
+                DebugConfig.log('engine', f"Research bureau restored: {len(self.research_bureau.unlocked_ids)} upgrades unlocked")
 
             # Restore guest references to shops, rides, restrooms
             for guest in self.guests:

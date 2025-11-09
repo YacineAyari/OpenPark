@@ -332,7 +332,8 @@ class Toolbar:
                     ('Inventaire', 'inventory_modal', 0),
                     ('Prix de vente', 'price_modal', 0),
                     ('Prêts', 'loan_modal', 0),
-                    ('Statistiques', 'stats_modal', 0)
+                    ('Statistiques', 'stats_modal', 0),
+                    ('R&D', 'research_modal', 0)
                 ]
             },
             'tools': {
@@ -378,7 +379,90 @@ class Toolbar:
         if employee_defs is not None:
             self.employee_defs = employee_defs
         self._build_groups()
-    def draw(self, screen):
+
+    def get_filtered_items(self, group_id, research_bureau=None):
+        """Get items for a group, filtered by research unlocks
+
+        Args:
+            group_id: ID of the group
+            research_bureau: Research bureau instance (optional)
+
+        Returns:
+            List of (name, id, cost) tuples for unlocked items
+        """
+        if group_id not in self.groups:
+            return []
+
+        all_items = self.groups[group_id]['items']
+
+        # If no research bureau, return all items (for backward compatibility)
+        if research_bureau is None:
+            return all_items
+
+        # Filter items based on research unlocks
+        filtered_items = []
+
+        for name, item_id, cost in all_items:
+            # Special items (paths, economy, tools) are always available
+            if group_id in ['paths', 'economy', 'tools']:
+                filtered_items.append((name, item_id, cost))
+                continue
+
+            # Check if item requires research unlock
+            is_unlocked = False
+
+            # Rides
+            if item_id in self.ride_defs:
+                unlocked_rides = research_bureau.get_unlocked_items('ride')
+                # Starter rides (carousel, bumper) are always available
+                if item_id in ['ride_carousel', 'ride_bumper']:
+                    is_unlocked = True
+                elif item_id in unlocked_rides:
+                    is_unlocked = True
+
+            # Shops
+            elif item_id in self.shop_defs:
+                unlocked_shops = research_bureau.get_unlocked_items('shop')
+                # Starter shops (soda, ice cream) are always available
+                if item_id in ['shop_soda', 'shop_icecream']:
+                    is_unlocked = True
+                elif item_id in unlocked_shops:
+                    is_unlocked = True
+
+            # Employees
+            elif item_id in self.employee_defs:
+                unlocked_employees = research_bureau.get_unlocked_items('employee')
+                # Starter employees (engineer, maintenance) are always available
+                if item_id in ['emp_engineer', 'emp_maintenance']:
+                    is_unlocked = True
+                elif item_id in unlocked_employees:
+                    is_unlocked = True
+
+            # Facilities (bins, restrooms, decorations)
+            elif item_id in self.bin_defs:
+                # Bins always available
+                is_unlocked = True
+            elif item_id in self.restroom_defs:
+                unlocked_restrooms = research_bureau.get_unlocked_items('restroom')
+                # Small restroom always available
+                if item_id == 'restroom_small':
+                    is_unlocked = True
+                elif item_id in unlocked_restrooms:
+                    is_unlocked = True
+            elif item_id in self.decoration_defs:
+                unlocked_decos = research_bureau.get_unlocked_items('decoration')
+                if item_id in unlocked_decos:
+                    is_unlocked = True
+            else:
+                # Unknown item, allow it
+                is_unlocked = True
+
+            if is_unlocked:
+                filtered_items.append((name, item_id, cost))
+
+        return filtered_items
+
+    def draw(self, screen, research_bureau=None):
         # Position toolbar en bas de l'écran
         screen_height = screen.get_height()
         toolbar_y = screen_height - 48  # 48px de hauteur pour la toolbar
@@ -434,7 +518,7 @@ class Toolbar:
         
         # Dessiner le sous-menu si un groupe est ouvert
         if self.expanded_group and self.expanded_group in self.groups:
-            self._draw_submenu(screen, toolbar_y)
+            self._draw_submenu(screen, toolbar_y, research_bureau)
 
         # Dessiner le tooltip si un bouton est survolé
         if self.hovered_button and not self.expanded_group:
@@ -481,11 +565,11 @@ class Toolbar:
         # Draw text
         screen.blit(tooltip_surface, (tooltip_x + 5, tooltip_y + 3))
 
-    def _draw_submenu(self, screen, toolbar_y):
+    def _draw_submenu(self, screen, toolbar_y, research_bureau=None):
         """Dessiner le sous-menu avec les éléments du groupe"""
         group_data = self.groups[self.expanded_group]
-        items = group_data['items']
-        
+        items = self.get_filtered_items(self.expanded_group, research_bureau)
+
         if not items:
             return
         

@@ -340,11 +340,33 @@
     - Comportements plus réalistes avancés
     - Note : Système de besoins (faim/soif/toilettes) déjà implémenté ✅
 
-42. **Système de recherche**
+42. ✅ **Bureau de R&D (Système de recherche)**
+    - Statut : Complété
     - Difficulté : 5/5
-    - Arbre de recherche technologique
-    - Déblocage progressif des attractions
-    - Coûts de recherche
+    - **Budget mensuel** : Définition d'un budget R&D prélevé le 1er du mois
+    - **6 catégories de recherche** : Visiteurs, Attractions, Shops, Employés, Décorations, Infrastructure
+    - **Répartition dynamique** : Sliders d'allocation modifiables à tout moment (0-100% par catégorie)
+    - **38 upgrades débloquables** :
+      * 7 upgrades Visiteurs (spawn rate, satisfaction, budget, VIP)
+      * 8 upgrades Attractions (4 déblocages + améliorations)
+      * 11 upgrades Shops (8 déblocages + optimisations)
+      * 4 upgrades Employés (efficacité, vitesse, salaires)
+      * 5 upgrades Décorations (4 déblocages + aura)
+      * 3 upgrades Infrastructure (toilettes, files, fast pass)
+    - **Système de points** : Accumulation quotidienne = (budget × allocation) / 30
+    - **Déblocage automatique** : Dès que points requis atteints (avec pré-requis)
+    - **Starter items** : 2 attractions, 2 shops, 2 employés, 1 toilette de base
+    - **Filtrage toolbar** : Items débloqués uniquement visibles
+    - **Suspension R&D** : Budget insuffisant → reset tous les points !
+    - **Interface complète** :
+      * Modal "Bureau de R&D" : Budget + sliders allocation
+      * Modal "Progrès Recherche" : Arbre tech avec onglets, barres progression
+      * Indicateur HUD 🏢 : Budget, upgrades, progrès actifs
+    - **Intégration complète** :
+      * Application effets (spawn rate, satisfaction, breakdown, etc.)
+      * Save/load système complet
+      * Configuration JSON (research_tree)
+      * Fichier research.py (359 lignes)
 
 43. **Mode campagne**
     - Difficulté : 5/5
@@ -400,6 +422,7 @@
 - ✅ **Système de prêts bancaires** (3 prêts, remboursement anticipé, game over)
 - ✅ **Statistiques financières** (graphiques 30j/1an, tracker historique complet)
 - ✅ **Système météo saisonnier** (soleil/pluie/neige, particules, impact gameplay)
+- ✅ **Bureau de R&D complet** (38 upgrades, 6 catégories, filtrage toolbar, déblocages progressifs)
 
 ### Problèmes connus
 - Aucun (système stable)
@@ -424,6 +447,7 @@
 - `themepark_engine/loan.py` : Gestion des prêts bancaires
 - `themepark_engine/finance_stats.py` : Historique et statistiques financières
 - `themepark_engine/weather.py` : Système météo avec particules
+- `themepark_engine/research.py` : Bureau de R&D et système de recherche
 - `themepark_engine/map.py` : Grille et types de tuiles
 - `themepark_engine/pathfinding.py` : Algorithme A*
 - `themepark_engine/ui.py` : Interface utilisateur (Toolbar)
@@ -438,6 +462,6 @@
 - Debug : logs catégorisés activables/désactivables par entité
 
 ---
-*Dernière mise à jour : 2025-11-08*
+*Dernière mise à jour : 2025-11-09*
 *Statut : En développement actif*
-*Version : 0.7.0-alpha*
+*Version : 0.8.0-alpha*

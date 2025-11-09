@@ -458,5 +458,476 @@
         "snow": 0.00
       }
     }
+  },
+  "research_tree": {
+    "visitors": [
+      {
+        "id": "vis_spawn_boost_1",
+        "name": "Marketing Campaign I",
+        "cost": 1000,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "spawn_rate_multiplier",
+          "value": 0.1
+        },
+        "prerequisites": [],
+        "description": "Augmente le taux de spawn des visiteurs de +10%"
+      },
+      {
+        "id": "vis_satisfaction_boost_1",
+        "name": "Guest Services Training",
+        "cost": 1500,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "base_satisfaction",
+          "value": 5.0
+        },
+        "prerequisites": [],
+        "description": "Augmente la satisfaction de base des visiteurs de +5"
+      },
+      {
+        "id": "vis_budget_boost_1",
+        "name": "Premium Visitors I",
+        "cost": 2000,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "visitor_budget_multiplier",
+          "value": 0.1
+        },
+        "prerequisites": [],
+        "description": "Augmente le budget des visiteurs de +10%"
+      },
+      {
+        "id": "vis_spawn_boost_2",
+        "name": "Marketing Campaign II",
+        "cost": 3500,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "spawn_rate_multiplier",
+          "value": 0.2
+        },
+        "prerequisites": ["vis_spawn_boost_1"],
+        "description": "Augmente le taux de spawn de +20% supplémentaire (cumulatif)"
+      },
+      {
+        "id": "vis_price_tolerance",
+        "name": "Value Perception",
+        "cost": 4500,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "price_sensitivity",
+          "value": -0.1
+        },
+        "prerequisites": ["vis_budget_boost_1"],
+        "description": "Réduit la sensibilité aux prix de -10%"
+      },
+      {
+        "id": "vis_weather_tolerance",
+        "name": "Weather Adaptation",
+        "cost": 6000,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "weather_penalty_multiplier",
+          "value": -0.25
+        },
+        "prerequisites": ["vis_satisfaction_boost_1"],
+        "description": "Réduit les pénalités de météo de -25%"
+      },
+      {
+        "id": "vis_vip_system",
+        "name": "VIP Program",
+        "cost": 10000,
+        "effect_type": "mechanic",
+        "effect_data": {
+          "name": "vip_visitors",
+          "chance": 0.1,
+          "budget_multiplier": 2.0
+        },
+        "prerequisites": ["vis_budget_boost_1", "vis_spawn_boost_2"],
+        "description": "10% des visiteurs sont VIP et dépensent 2x plus"
+      }
+    ],
+    "attractions": [
+      {
+        "id": "attr_unlock_ferris",
+        "name": "Unlock: Ferris Wheel",
+        "cost": 2000,
+        "effect_type": "unlock",
+        "effect_data": {
+          "type": "ride",
+          "items": ["ride_ferris"]
+        },
+        "prerequisites": [],
+        "description": "Débloque la Ferris Wheel (Grande Roue)"
+      },
+      {
+        "id": "attr_unlock_train",
+        "name": "Unlock: Park Train",
+        "cost": 2500,
+        "effect_type": "unlock",
+        "effect_data": {
+          "type": "ride",
+          "items": ["ride_train"]
+        },
+        "prerequisites": [],
+        "description": "Débloque le Park Train (Train du parc)"
+      },
+      {
+        "id": "attr_unlock_ship",
+        "name": "Unlock: Pirate Ship",
+        "cost": 3000,
+        "effect_type": "unlock",
+        "effect_data": {
+          "type": "ride",
+          "items": ["ride_ship"]
+        },
+        "prerequisites": ["attr_unlock_ferris"],
+        "description": "Débloque le Pirate Ship (Bateau Pirate)"
+      },
+      {
+        "id": "attr_unlock_circus",
+        "name": "Unlock: Circus Show",
+        "cost": 4000,
+        "effect_type": "unlock",
+        "effect_data": {
+          "type": "ride",
+          "items": ["ride_circus"]
+        },
+        "prerequisites": ["attr_unlock_train"],
+        "description": "Débloque le Circus Show (Spectacle de Cirque)"
+      },
+      {
+        "id": "attr_reliability_1",
+        "name": "Preventive Maintenance I",
+        "cost": 2500,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "breakdown_chance_multiplier",
+          "value": -0.2
+        },
+        "prerequisites": [],
+        "description": "Réduit les pannes de -20%"
+      },
+      {
+        "id": "attr_capacity_boost",
+        "name": "Capacity Optimization",
+        "cost": 3500,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "ride_capacity_multiplier",
+          "value": 0.15
+        },
+        "prerequisites": ["attr_unlock_ferris"],
+        "description": "Augmente la capacité des attractions de +15%"
+      },
+      {
+        "id": "attr_reliability_2",
+        "name": "Preventive Maintenance II",
+        "cost": 5000,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "breakdown_chance_multiplier",
+          "value": -0.3
+        },
+        "prerequisites": ["attr_reliability_1"],
+        "description": "Réduit les pannes de -30% supplémentaire (cumulatif)"
+      },
+      {
+        "id": "attr_speed_boost",
+        "name": "Ride Efficiency",
+        "cost": 6000,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "ride_duration_multiplier",
+          "value": -0.15
+        },
+        "prerequisites": ["attr_capacity_boost"],
+        "description": "Réduit la durée des attractions de -15% (plus de tours/heure)"
+      }
+    ],
+    "shops": [
+      {
+        "id": "shop_unlock_hotdog",
+        "name": "Unlock: Hotdog Stand",
+        "cost": 1500,
+        "effect_type": "unlock",
+        "effect_data": {
+          "type": "shop",
+          "items": ["shop_hotdog"]
+        },
+        "prerequisites": [],
+        "description": "Débloque le Hotdog Stand"
+      },
+      {
+        "id": "shop_unlock_fries",
+        "name": "Unlock: Fries Stand",
+        "cost": 1500,
+        "effect_type": "unlock",
+        "effect_data": {
+          "type": "shop",
+          "items": ["shop_fries"]
+        },
+        "prerequisites": [],
+        "description": "Débloque le Fries Stand"
+      },
+      {
+        "id": "shop_unlock_restaurant",
+        "name": "Unlock: Restaurant",
+        "cost": 2500,
+        "effect_type": "unlock",
+        "effect_data": {
+          "type": "shop",
+          "items": ["shop_restaurant"]
+        },
+        "prerequisites": ["shop_unlock_hotdog"],
+        "description": "Débloque le Restaurant"
+      },
+      {
+        "id": "shop_unlock_gift",
+        "name": "Unlock: Gift Shop",
+        "cost": 2000,
+        "effect_type": "unlock",
+        "effect_data": {
+          "type": "shop",
+          "items": ["shop_gift"]
+        },
+        "prerequisites": [],
+        "description": "Débloque le Gift Shop"
+      },
+      {
+        "id": "shop_unlock_pizza",
+        "name": "Unlock: Pizza Stand",
+        "cost": 2200,
+        "effect_type": "unlock",
+        "effect_data": {
+          "type": "shop",
+          "items": ["shop_pizza"]
+        },
+        "prerequisites": ["shop_unlock_hotdog"],
+        "description": "Débloque le Pizza Stand"
+      },
+      {
+        "id": "shop_unlock_candy",
+        "name": "Unlock: Candy Shop",
+        "cost": 1800,
+        "effect_type": "unlock",
+        "effect_data": {
+          "type": "shop",
+          "items": ["shop_candy"]
+        },
+        "prerequisites": [],
+        "description": "Débloque le Candy Shop"
+      },
+      {
+        "id": "shop_unlock_popcorn",
+        "name": "Unlock: Popcorn Stand",
+        "cost": 1600,
+        "effect_type": "unlock",
+        "effect_data": {
+          "type": "shop",
+          "items": ["shop_popcorn"]
+        },
+        "prerequisites": [],
+        "description": "Débloque le Popcorn Stand"
+      },
+      {
+        "id": "shop_unlock_cookie",
+        "name": "Unlock: Cookie Stand",
+        "cost": 1700,
+        "effect_type": "unlock",
+        "effect_data": {
+          "type": "shop",
+          "items": ["shop_cookie"]
+        },
+        "prerequisites": [],
+        "description": "Débloque le Cookie Stand"
+      },
+      {
+        "id": "shop_cost_reduction_1",
+        "name": "Bulk Purchasing I",
+        "cost": 3000,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "product_cost_multiplier",
+          "value": -0.1
+        },
+        "prerequisites": ["shop_unlock_hotdog"],
+        "description": "Réduit le coût d'achat des produits de -10%"
+      },
+      {
+        "id": "shop_satisfaction_boost",
+        "name": "Premium Quality",
+        "cost": 4000,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "shop_satisfaction_bonus",
+          "value": 5.0
+        },
+        "prerequisites": ["shop_unlock_restaurant"],
+        "description": "Augmente la satisfaction après achat de +5"
+      },
+      {
+        "id": "shop_litter_reduction",
+        "name": "Eco-Friendly Packaging",
+        "cost": 5000,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "litter_generation_multiplier",
+          "value": -0.3
+        },
+        "prerequisites": ["shop_satisfaction_boost"],
+        "description": "Réduit la génération de détritus de -30%"
+      }
+    ],
+    "employees": [
+      {
+        "id": "emp_efficiency_boost_1",
+        "name": "Training Program I",
+        "cost": 2000,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "employee_efficiency_multiplier",
+          "value": 0.15
+        },
+        "prerequisites": [],
+        "description": "Augmente l'efficacité des employés de +15%"
+      },
+      {
+        "id": "emp_speed_boost",
+        "name": "Mobility Enhancement",
+        "cost": 2500,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "employee_speed_multiplier",
+          "value": 0.2
+        },
+        "prerequisites": [],
+        "description": "Augmente la vitesse de déplacement des employés de +20%"
+      },
+      {
+        "id": "emp_efficiency_boost_2",
+        "name": "Training Program II",
+        "cost": 4500,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "employee_efficiency_multiplier",
+          "value": 0.25
+        },
+        "prerequisites": ["emp_efficiency_boost_1"],
+        "description": "Augmente l'efficacité de +25% supplémentaire (cumulatif)"
+      },
+      {
+        "id": "emp_salary_reduction",
+        "name": "Productivity Gains",
+        "cost": 5000,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "employee_salary_multiplier",
+          "value": -0.1
+        },
+        "prerequisites": ["emp_efficiency_boost_2"],
+        "description": "Réduit les salaires de -10% grâce à la productivité"
+      }
+    ],
+    "decorations": [
+      {
+        "id": "deco_unlock_basic",
+        "name": "Unlock: Basic Decorations",
+        "cost": 1000,
+        "effect_type": "unlock",
+        "effect_data": {
+          "type": "decoration",
+          "items": ["deco_tree", "deco_bush", "deco_bench"]
+        },
+        "prerequisites": [],
+        "description": "Débloque les décorations de base (arbres, buissons, bancs)"
+      },
+      {
+        "id": "deco_unlock_flowers",
+        "name": "Unlock: Flowers",
+        "cost": 800,
+        "effect_type": "unlock",
+        "effect_data": {
+          "type": "decoration",
+          "items": ["deco_flower"]
+        },
+        "prerequisites": [],
+        "description": "Débloque les fleurs"
+      },
+      {
+        "id": "deco_unlock_flags",
+        "name": "Unlock: Flags",
+        "cost": 1200,
+        "effect_type": "unlock",
+        "effect_data": {
+          "type": "decoration",
+          "items": ["deco_flag"]
+        },
+        "prerequisites": [],
+        "description": "Débloque les drapeaux"
+      },
+      {
+        "id": "deco_unlock_lamp",
+        "name": "Unlock: Lamp Posts",
+        "cost": 1500,
+        "effect_type": "unlock",
+        "effect_data": {
+          "type": "decoration",
+          "items": ["deco_lamp"]
+        },
+        "prerequisites": ["deco_unlock_basic"],
+        "description": "Débloque les lampadaires"
+      },
+      {
+        "id": "deco_satisfaction_aura",
+        "name": "Aesthetic Appeal",
+        "cost": 3000,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "decoration_satisfaction_bonus",
+          "value": 2.0
+        },
+        "prerequisites": ["deco_unlock_basic"],
+        "description": "Les décorations augmentent la satisfaction des visiteurs proches de +2"
+      }
+    ],
+    "infrastructure": [
+      {
+        "id": "infra_unlock_restrooms",
+        "name": "Unlock: Advanced Restrooms",
+        "cost": 2000,
+        "effect_type": "unlock",
+        "effect_data": {
+          "type": "restroom",
+          "items": ["restroom_medium", "restroom_large", "restroom_xl"]
+        },
+        "prerequisites": [],
+        "description": "Débloque les toilettes Medium, Large et XL"
+      },
+      {
+        "id": "infra_queue_capacity",
+        "name": "Queue Management",
+        "cost": 3500,
+        "effect_type": "modifier",
+        "effect_data": {
+          "name": "queue_capacity_multiplier",
+          "value": 0.25
+        },
+        "prerequisites": [],
+        "description": "Augmente la capacité des files d'attente de +25%"
+      },
+      {
+        "id": "infra_fast_pass",
+        "name": "Fast Pass System",
+        "cost": 8000,
+        "effect_type": "mechanic",
+        "effect_data": {
+          "name": "fast_pass",
+          "enabled": true
+        },
+        "prerequisites": ["infra_queue_capacity"],
+        "description": "Débloque le système de Fast Pass (files prioritaires)"
+      }
+    ]
   }
 }
