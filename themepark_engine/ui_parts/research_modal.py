@@ -156,6 +156,18 @@ class ResearchBureauModal:
                 # Position relative dans la barre
                 relative_x = max(0, min(slider_width, mouse_x - rect.x))
                 new_allocation = relative_x / slider_width
+
+                # Vérifier si le nouveau total dépasse 100%
+                current_allocation = research_bureau.categories[self.dragging_slider].allocation
+                total_allocation = research_bureau.get_total_allocation()
+                new_total = total_allocation - current_allocation + new_allocation
+
+                # Empêcher d'augmenter si déjà au-dessus de 100%
+                if new_total > 1.0 and new_allocation > current_allocation:
+                    # Calculer l'allocation maximale permise
+                    max_allowed = 1.0 - (total_allocation - current_allocation)
+                    new_allocation = max(current_allocation, max_allowed)
+
                 research_bureau.set_category_allocation(self.dragging_slider, new_allocation)
                 return True
 
