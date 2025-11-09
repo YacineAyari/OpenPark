@@ -1218,6 +1218,13 @@ class Game:
                 self.guests.append(new_guest)
                 self.guests_entered += 1
 
+                # Notify visitor milestones
+                if self.guests_entered in [1, 10, 25, 50, 100, 200, 500, 1000]:
+                    self._add_notification(
+                        NotificationType.SUCCESS,
+                        f"🎉 {self.guests_entered}ème visiteur ! Nouveau record"
+                    )
+
                 DebugConfig.log('engine', f"Guest {new_guest.id} entered park (paid ${entrance_fee}, has ${new_guest.money} left). Total entered: {self.guests_entered}")
             else:
                 # Guest cannot afford - refuse entry
@@ -1271,15 +1278,31 @@ class Game:
         self.economy.start_new_day(total_day)
 
         # Update weather system (check for weather change)
+        old_weather = self.weather_system.current_weather
         self.weather_system.tick_day(self.game_day, self.game_month)
+        new_weather = self.weather_system.current_weather
         weather_name = self.weather_system.get_weather_name()
         DebugConfig.log('engine', f"Weather: {weather_name} (Spawn rate: {self.weather_system.get_spawn_rate_multiplier()*100:.0f}%)")
+
+        # Notify weather change if different
+        if new_weather != old_weather:
+            weather_emoji = self.weather_system.get_weather_emoji()
+            spawn_rate = int(self.weather_system.get_spawn_rate_multiplier() * 100)
+            self._add_notification(
+                NotificationType.INFO,
+                f"{weather_emoji} Météo : {weather_name} (Visiteurs {spawn_rate}%)"
+            )
 
         # Research bureau daily tick (accumulate points + monthly deduction)
         success, message = self.research_bureau.tick_day(self.game_day, self.game_month, self.economy.cash)
         if not success:
             # R&D suspended due to insufficient funds
             DebugConfig.log('engine', message)
+            self._add_notification(
+                NotificationType.CRITICAL,
+                f"R&D suspendu ! Tous les points perdus",
+                play_sound=True
+            )
             # Deduct the failed budget from cash (budget was not paid)
             # No deduction happens, just points are reset
         else:
@@ -1288,27 +1311,74 @@ class Game:
                 self.economy.add_expense(self.research_bureau.monthly_budget)
                 DebugConfig.log('engine', f"R&D Budget deducted: ${self.research_bureau.monthly_budget}")
 
+            # Check for categories that reached their points cap
+            for category in self.research_bureau.categories.values():
+                if category.allocation > 0:
+                    points_cap = category.get_points_cap(self.research_bureau.upgrades, self.research_bureau.unlocked_ids)
+                    if category.points >= points_cap and points_cap > 0:
+                        self._add_notification(
+                            NotificationType.WARNING,
+                            f"R&D {category.name} : Limite atteinte ({category.points:.0f}/{points_cap}) - Débloquez une amélioration !",
+                            cooldown_key=f"rd_cap_{category.name}"
+                        )
+
         # Process daily loan payment
-        if self.loan_manager.has_active_loan():
+        loan_was_active = self.loan_manager.has_active_loan()
+        if loan_was_active:
             success, payment = self.loan_manager.process_daily_payment()
             if success and payment > 0:
                 self.economy.add_expense(payment)
                 DebugConfig.log('engine', f"Loan payment: ${payment:.2f} (Days remaining: {self.loan_manager.active_loan.days_remaining})")
+
+        # Check if loan was just repaid
+        if loan_was_active and not self.loan_manager.has_active_loan():
+            self._add_notification(
+                NotificationType.SUCCESS,
+                "Prêt remboursé avec succès !"
+            )
 
         # Check for game over (90 consecutive days with negative cash)
         if self.economy.should_game_over():
             DebugConfig.log('engine', f"GAME OVER: Cash has been negative for {self.economy.negative_cash_days} consecutive days")
             self._show_game_over()
 
+        # Warn about prolonged negative cash
+        if self.economy.cash < 0:
+            days = self.economy.negative_cash_days
+            if days == 30:
+                self._add_notification(
+                    NotificationType.WARNING,
+                    f"Cash négatif depuis 30 jours - Attention !",
+                    cooldown_key="negative_cash"
+                )
+            elif days == 60:
+                self._add_notification(
+                    NotificationType.CRITICAL,
+                    f"Cash négatif depuis 60 jours ! Game Over dans 30 jours",
+                    play_sound=True,
+                    cooldown_key="negative_cash"
+                )
+        elif self.economy.cash < 1000:
+            # Low budget warning
+            self._add_notification(
+                NotificationType.WARNING,
+                f"Budget bas : ${self.economy.cash:.0f}",
+                cooldown_key="low_budget"
+            )
+
         # Advance inventory orders
         delivered_orders = self.inventory_manager.tick_day()
 
-        # Log deliveries
+        # Log and notify deliveries
         if delivered_orders:
             for order in delivered_orders:
                 product = self.inventory_manager.products.get(order.product_id)
                 product_name = product.name if product else order.product_id
                 DebugConfig.log('engine', f"Order delivered: {order.quantity}x {product_name} (${order.total_cost:.2f})")
+                self._add_notification(
+                    NotificationType.SUCCESS,
+                    f"Livraison : {order.quantity}x {product_name}"
+                )
 
     def _show_game_over(self):
         """Display game over screen"""
@@ -1359,6 +1429,17 @@ class Game:
                 # Guest is unhappy and wants to leave
                 guest_pos = (int(guest.x), int(guest.y))
                 entrance_pos = self.park_entrance
+
+                # Notify for unhappy guest leaving
+                if guest.satisfaction < 0.2:
+                    self._add_notification(
+                        NotificationType.WARNING,
+                        f"Visiteur mécontent quitte le parc ({guest.satisfaction*100:.0f}%)",
+                        clickable=True,
+                        click_action="center_camera",
+                        click_data={'position': (int(guest.x), int(guest.y))},
+                        cooldown_key="unhappy_visitor"
+                    )
 
                 # Find path to park entrance
                 path = astar(self.grid, guest_pos, entrance_pos)
@@ -1502,7 +1583,26 @@ class Game:
                         self.inventory_manager.consume_stock(product_id)
                         shop_price = self.pricing_manager.get_price(product_id, cost)
                         self.economy.add_income(shop_price)
-                        DebugConfig.log('engine', f"Guest {g.id} bought at {previous_shop.defn.name}, price: ${shop_price:.2f}, acceptance: {purchase_probability*100:.0f}%, stock: {self.inventory_manager.get_stock(product_id)}")
+                        remaining_stock = self.inventory_manager.get_stock(product_id)
+                        DebugConfig.log('engine', f"Guest {g.id} bought at {previous_shop.defn.name}, price: ${shop_price:.2f}, acceptance: {purchase_probability*100:.0f}%, stock: {remaining_stock}")
+
+                        # Check for low stock warning
+                        if remaining_stock == 0:
+                            product = self.inventory_manager.products.get(product_id)
+                            self._add_notification(
+                                NotificationType.CRITICAL,
+                                f"Stock épuisé : {product.name}",
+                                cooldown_key=f"stock_out_{product_id}",
+                                play_sound=True
+                            )
+                        elif remaining_stock <= 10:
+                            product = self.inventory_manager.products.get(product_id)
+                            self._add_notification(
+                                NotificationType.WARNING,
+                                f"Stock bas : {product.name} ({remaining_stock} restants)",
+                                cooldown_key=f"low_stock_{product_id}"
+                            )
+
                         # Apply shopping satisfaction bonus
                         g.apply_shopping_bonus()
                     else:
@@ -1514,6 +1614,13 @@ class Game:
                     # Out of stock - guest gets nothing, loses satisfaction
                     g.satisfaction -= 10
                     DebugConfig.log('engine', f"Guest {g.id} found {previous_shop.defn.name} OUT OF STOCK, satisfaction -{10}")
+                    product = self.inventory_manager.products.get(product_id)
+                    self._add_notification(
+                        NotificationType.CRITICAL,
+                        f"Stock épuisé : {product.name}",
+                        cooldown_key=f"stock_out_{product_id}",
+                        play_sound=True
+                    )
                 else:
                     # Shop has no linked product (shouldn't happen, but handle gracefully)
                     shop_price = previous_shop.defn.base_price
@@ -1720,6 +1827,15 @@ class Game:
         
         # Update rides
         for r in self.rides: r.tick(dt)
+
+        # Check for newly unlocked R&D upgrades and send notifications
+        if self.research_modal.last_unlocked_upgrade:
+            upgrade = self.research_modal.last_unlocked_upgrade
+            self._add_notification(
+                NotificationType.SUCCESS,
+                f"🔬 R&D débloqué : {upgrade.name} ({upgrade.category})"
+            )
+            self.research_modal.last_unlocked_upgrade = None  # Clear after notification
 
     def _is_in_toolbar_area(self, pos, screen_height):
         """Vérifier si la position est dans la zone de la toolbar ou ses sous-menus"""
@@ -3098,7 +3214,7 @@ class Game:
             cooldown_key: Cooldown key to prevent spam
             play_sound: If True, plays a beep sound for critical notifications
         """
-        game_time = (self.game_day, self.game_time // 3600 % 24, int(self.game_time % 3600) // 60)
+        game_time = (self.game_day, int(self.game_time // 3600) % 24, int(self.game_time % 3600) // 60)
 
         notif = self.notification_manager.add(
             notif_type,
@@ -3517,6 +3633,19 @@ class Game:
 
         DebugConfig.log('engine', f"Started negotiation for {selected_type}s: ${negotiation.current_salary} -> ${negotiation.demanded_salary}")
 
+        # Notify salary negotiation started
+        type_names = {
+            'engineer': 'Ingénieurs',
+            'maintenance': 'Maintenance',
+            'security': 'Sécurité',
+            'mascot': 'Mascottes'
+        }
+        self._add_notification(
+            NotificationType.WARNING,
+            f"Négociation salariale : {type_names.get(selected_type, selected_type)}",
+            play_sound=True
+        )
+
     def _show_negotiation_modal(self, negotiation, employee_type, employee_count):
         """Show negotiation modal and pause the game"""
         # Save current game speed and pause
@@ -3566,6 +3695,18 @@ class Game:
                 emp.defn.salary = player_offer
             DebugConfig.log('engine', f"Updated {len(employees_of_type)} {employee_type}s to salary ${player_offer}/day")
 
+            # Notification: negotiation accepted
+            type_names = {
+                'engineer': 'Ingénieurs',
+                'maintenance': 'Maintenance',
+                'security': 'Sécurité',
+                'mascot': 'Mascottes'
+            }
+            self._add_notification(
+                NotificationType.SUCCESS,
+                f"Négociation acceptée : {type_names.get(employee_type, employee_type)} à ${player_offer}/jour"
+            )
+
             # Hide modal and resume game
             self._hide_negotiation_modal()
         elif resigned:
@@ -3595,11 +3736,38 @@ class Game:
 
             DebugConfig.log('engine', f"RESIGNATION: {removed_count} {employee_type}s are leaving the park")
 
+            # Notification: employees resigned
+            type_names = {
+                'engineer': 'Ingénieurs',
+                'maintenance': 'Maintenance',
+                'security': 'Sécurité',
+                'mascot': 'Mascottes'
+            }
+            self._add_notification(
+                NotificationType.WARNING,
+                f"{removed_count} {type_names.get(employee_type, employee_type)} démissionnent et quittent le parc !",
+                play_sound=True
+            )
+
             # Hide modal and resume game
             self._hide_negotiation_modal()
         else:
             # Negotiation rejected - check if we need to reopen immediately
             negotiation = self.salary_negotiation_manager.get_active_negotiation(employee_type)
+
+            # Notification: negotiation rejected / strike
+            type_names = {
+                'engineer': 'Ingénieurs',
+                'maintenance': 'Maintenance',
+                'security': 'Sécurité',
+                'mascot': 'Mascottes'
+            }
+            self._add_notification(
+                NotificationType.CRITICAL,
+                f"Grève ! {type_names.get(employee_type, employee_type)} refusent votre offre",
+                play_sound=True
+            )
+
             if negotiation and (negotiation.next_negotiation_year == self.game_year and
                                 negotiation.next_negotiation_month == self.game_month and
                                 negotiation.next_negotiation_day == self.game_day):

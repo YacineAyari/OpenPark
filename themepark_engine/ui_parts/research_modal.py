@@ -26,6 +26,7 @@ class ResearchBureauModal:
         self.budget_input_text = ""
         self.current_tab = "budget"  # "budget" or "progress"
         self.current_progress_category = "visitors"  # For progress tab
+        self.last_unlocked_upgrade = None  # For notification in engine.py
 
         # Sliders pour l'allocation
         self.dragging_slider = None  # Nom de la catégorie en cours de drag
@@ -150,6 +151,8 @@ class ResearchBureauModal:
                                 success, message = research_bureau.unlock_upgrade_manual(upgrade)
                                 if success:
                                     DebugConfig.log('research', message)
+                                    # Store for notification in engine.py
+                                    self.last_unlocked_upgrade = upgrade
                                 return True
 
                 # Scroll buttons
