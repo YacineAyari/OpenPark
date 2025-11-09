@@ -343,7 +343,7 @@
 42. ✅ **Bureau de R&D (Système de recherche)**
     - Statut : Complété
     - Difficulté : 5/5
-    - **Budget mensuel** : Définition d'un budget R&D prélevé le 1er du mois
+    - **Budget mensuel** : Budget R&D prélevé le 1er du mois (max $5000)
     - **6 catégories de recherche** : Visiteurs, Attractions, Shops, Employés, Décorations, Infrastructure
     - **Répartition dynamique** : Sliders d'allocation modifiables à tout moment (0-100% par catégorie)
     - **38 upgrades débloquables** :
@@ -354,19 +354,20 @@
       * 5 upgrades Décorations (4 déblocages + aura)
       * 3 upgrades Infrastructure (toilettes, files, fast pass)
     - **Système de points** : Accumulation quotidienne = (budget × allocation) / 30
-    - **Déblocage automatique** : Dès que points requis atteints (avec pré-requis)
+    - **Cap dynamique** : Limite basée sur l'upgrade le plus cher débloquable (évolue avec progression)
+    - **Déblocage manuel** : Joueur clique "DÉBLOQUER" pour choisir quel upgrade débloquer (preserves prerequisites)
     - **Starter items** : 2 attractions, 2 shops, 2 employés, 1 toilette de base
     - **Filtrage toolbar** : Items débloqués uniquement visibles
     - **Suspension R&D** : Budget insuffisant → reset tous les points !
     - **Interface complète** :
-      * Modal "Bureau de R&D" : Budget + sliders allocation
-      * Modal "Progrès Recherche" : Arbre tech avec onglets, barres progression
+      * Modal "Bureau de R&D" : Budget + sliders + affichage points/cap par catégorie
+      * Modal "Progrès Recherche" : Arbre tech avec boutons déblocage, alertes limite
       * Indicateur HUD 🏢 : Budget, upgrades, progrès actifs
     - **Intégration complète** :
       * Application effets (spawn rate, satisfaction, breakdown, etc.)
       * Save/load système complet
       * Configuration JSON (research_tree)
-      * Fichier research.py (359 lignes)
+      * Fichier research.py (370+ lignes)
 
 43. **Mode campagne**
     - Difficulté : 5/5
@@ -422,7 +423,7 @@
 - ✅ **Système de prêts bancaires** (3 prêts, remboursement anticipé, game over)
 - ✅ **Statistiques financières** (graphiques 30j/1an, tracker historique complet)
 - ✅ **Système météo saisonnier** (soleil/pluie/neige, particules, impact gameplay)
-- ✅ **Bureau de R&D complet** (38 upgrades, 6 catégories, filtrage toolbar, déblocages progressifs)
+- ✅ **Bureau de R&D complet** (38 upgrades, déblocage manuel, cap dynamique, 6 catégories)
 
 ### Problèmes connus
 - Aucun (système stable)
@@ -464,4 +465,4 @@
 ---
 *Dernière mise à jour : 2025-11-09*
 *Statut : En développement actif*
-*Version : 0.8.0-alpha*
+*Version : 0.8.1-alpha*

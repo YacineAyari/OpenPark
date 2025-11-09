@@ -4,7 +4,7 @@
 
 OpenPark est une simulation de parc d'attractions en **projection oblique**, développée en Python avec Pygame. Gérez votre parc, construisez des attractions, employez du personnel, et gardez vos visiteurs heureux!
 
-![Version](https://img.shields.io/badge/version-0.8.0--alpha-orange)
+![Version](https://img.shields.io/badge/version-0.8.1--alpha-orange)
 ![Python](https://img.shields.io/badge/python-3.8+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![AI-Powered](https://img.shields.io/badge/AI--Powered-Claude%20%26%20GPT-purple)
@@ -41,7 +41,7 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 - ✅ **Système de prêts bancaires** (3 prêts prédéfinis, remboursement anticipé, game over)
 - ✅ **Statistiques financières avancées** (graphiques 30j/1an, historique revenus/dépenses)
 - ✅ **Système météo saisonnier** (soleil/pluie/neige, impact visiteurs, effets visuels)
-- ✅ **Bureau de R&D complet** (budget mensuel, répartition par catégorie, 38 upgrades débloquables)
+- ✅ **Bureau de R&D complet** (budget mensuel, déblocage manuel, cap dynamique, 38 upgrades)
 
 **Résultat**: Un moteur de jeu complet et fonctionnel développé entièrement via conversation avec IA! 🚀
 
@@ -196,7 +196,7 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 - **Démarrage** : Toujours soleil au début
 
 #### 🏢 **Bureau de R&D (Recherche & Développement)**
-- **Budget mensuel** : Le joueur définit un budget alloué à la R&D (prélevé le 1er de chaque mois)
+- **Budget mensuel** : Le joueur définit un budget alloué à la R&D (max $5000, prélevé le 1er de chaque mois)
 - **Répartition dynamique** : 6 catégories de recherche avec allocation personnalisable
   - 👥 **Visiteurs** : Spawn rate, satisfaction, budget visiteurs, tolérance météo
   - 🎢 **Attractions** : Déblocage nouvelles attractions, fiabilité, capacité, efficacité
@@ -213,13 +213,14 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
   - **3 upgrades Infrastructure** : Toilettes avancées, Files +25% capacité, Fast Pass
 - **Système de points** : Accumulation quotidienne selon l'allocation
   - Formule : `points/jour = (budget_mensuel × pourcentage_catégorie) / 30`
-  - Déblocage automatique dès que les points requis sont atteints
+  - **Cap dynamique** : Limite basée sur l'upgrade le plus cher débloquable (évolue avec progression)
+  - **Déblocage manuel** : Le joueur clique "DÉBLOQUER" pour choisir quel upgrade débloquer
 - **Pré-requis** : Certains upgrades nécessitent d'autres upgrades avant d'être débloqués
 - **Starter items** : Au lancement, seulement 2 attractions, 2 shops, 2 employés et 1 toilette sont disponibles
 - **Suspension R&D** : Si budget insuffisant le 1er du mois → tous les points sont perdus !
 - **Interface complète** :
-  - Modal "Bureau de R&D" : Gestion budget + répartition avec sliders
-  - Modal "Progrès Recherche" : Arbre tech, barres de progression, pré-requis
+  - Modal "Bureau de R&D" : Gestion budget + répartition avec sliders + affichage points/cap par catégorie
+  - Modal "Progrès Recherche" : Arbre tech avec boutons déblocage, barres progression, pré-requis, alertes limite
   - Indicateur HUD 🏢 : Budget, upgrades débloqués, progrès actifs
 - **Save/Load** : État complet de la recherche sauvegardé
 
