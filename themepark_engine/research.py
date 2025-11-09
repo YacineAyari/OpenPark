@@ -146,8 +146,8 @@ class ResearchBureau:
             if not success:
                 return False, msg
 
-        # Accumuler les points quotidiens SEULEMENT si le joueur a du cash positif
-        if self.monthly_budget > 0 and player_cash >= 0:
+        # Accumuler les points quotidiens SEULEMENT si le joueur a du cash strictement positif
+        if self.monthly_budget > 0 and player_cash > 0:
             for category in self.categories.values():
                 if category.allocation > 0:
                     points_added = category.add_daily_points(self.monthly_budget)
@@ -156,8 +156,8 @@ class ResearchBureau:
 
             # Vérifier et débloquer automatiquement les upgrades disponibles
             self._check_and_unlock_upgrades()
-        elif player_cash < 0:
-            DebugConfig.log('research', "⚠️ R&D suspended: Negative cash - No points accumulated today")
+        elif player_cash <= 0:
+            DebugConfig.log('research', "⚠️ R&D suspended: No cash available - No points accumulated today")
 
         return True, ""
 
