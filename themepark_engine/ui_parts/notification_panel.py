@@ -249,7 +249,7 @@ class NotificationPanel:
                 screen.blit(text_render, (notif_rect.x + 40, notif_rect.y + 10 + i * 18))
 
             # Timestamp (en bas à droite)
-            timestamp_text = f"Day {notif.game_day} - {notif.timestamp}"
+            timestamp_text = notif.timestamp
             small_font = pygame.font.Font(None, 16)
             timestamp_render = small_font.render(timestamp_text, True, (150, 150, 150))
             screen.blit(timestamp_render, (notif_rect.right - 120, notif_rect.bottom - 18))

@@ -3287,7 +3287,7 @@ class Game:
             cooldown_key: Cooldown key to prevent spam
             play_sound: If True, plays a beep sound for critical notifications
         """
-        game_time = (self.game_day, int(self.game_time // 3600) % 24, int(self.game_time % 3600) // 60)
+        game_time = (self.game_year, self.game_month, self.game_day, int(self.game_time // 3600) % 24, int(self.game_time % 3600) // 60)
 
         notif = self.notification_manager.add(
             notif_type,

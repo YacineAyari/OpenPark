@@ -369,7 +369,25 @@
       * Configuration JSON (research_tree)
       * Fichier research.py (370+ lignes)
 
-43. **Mode campagne**
+43. ✅ **Système de notifications amélioré**
+    - Statut : Complété
+    - Difficulté : 3/5
+    - **Toast notifications** : Affichage temporaire avec fade out
+    - **Historique complet** : Panel avec toutes les notifications (max 20)
+    - **Dates complètes** : Format "01 January 2025" au lieu de "Day X"
+    - **4 types de notifications** : CRITICAL (rouge), WARNING (orange), INFO (jaune), SUCCESS (vert)
+    - **Cooldown système** : Évite le spam de notifications identiques
+    - **Actions cliquables** : Centrer caméra, ouvrir modals
+    - **Sprites OpenMoji** : Remplacement complet de tous les emojis textuels
+      * HUD : Météo, R&D, notifications
+      * Modals : Stats financières (💰), prêts (📊), R&D
+      * Interface cohérente sur toutes les plateformes
+    - **Intégration complète** :
+      * Save/load du système de notifications
+      * Indicateur dans le HUD (compteur non lues)
+      * Notification automatique pour événements clés
+
+44. **Mode campagne**
     - Difficulté : 5/5
     - Scénarios prédéfinis avec objectifs
     - Progression et récompenses
@@ -424,6 +442,8 @@
 - ✅ **Statistiques financières** (graphiques 30j/1an, tracker historique complet)
 - ✅ **Système météo saisonnier** (soleil/pluie/neige, particules, impact gameplay)
 - ✅ **Bureau de R&D complet** (38 upgrades, déblocage manuel, cap dynamique, 6 catégories)
+- ✅ **Système de notifications** (toast, historique, dates complètes, types colorés)
+- ✅ **Sprites OpenMoji complets** (tous emojis textuels remplacés, interface cohérente)
 
 ### Problèmes connus
 - Aucun (système stable)
@@ -463,6 +483,6 @@
 - Debug : logs catégorisés activables/désactivables par entité
 
 ---
-*Dernière mise à jour : 2025-11-09*
+*Dernière mise à jour : 2025-11-10*
 *Statut : En développement actif*
-*Version : 0.8.1-alpha*
+*Version : 0.8.2-alpha*

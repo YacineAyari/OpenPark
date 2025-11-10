@@ -7,6 +7,12 @@ from typing import List, Optional, Tuple
 from datetime import datetime
 from enum import Enum
 
+# Full month names for timestamp formatting
+MONTH_NAMES_FULL = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+]
+
 
 class NotificationType(Enum):
     """Types de notifications avec priorités et couleurs"""
@@ -22,7 +28,7 @@ class Notification:
     id: int
     type: NotificationType
     message: str
-    timestamp: str  # Format "HH:MM"
+    timestamp: str  # Format "Day X"
     game_day: int
     read: bool = False
     clickable: bool = False  # Si True, peut centrer caméra ou ouvrir modal
@@ -49,7 +55,7 @@ class NotificationManager:
     def add(self,
             notif_type: NotificationType,
             message: str,
-            game_time: Tuple[int, int, int],  # (day, hour, minute)
+            game_time: Tuple[int, int, int, int, int],  # (year, month, day, hour, minute)
             clickable: bool = False,
             click_action: Optional[str] = None,
             click_data: Optional[dict] = None,
@@ -60,7 +66,7 @@ class NotificationManager:
         Args:
             notif_type: Type de notification
             message: Message à afficher
-            game_time: (day, hour, minute) du jeu
+            game_time: (year, month, day, hour, minute) du jeu
             clickable: Si True, notification cliquable
             click_action: Action à effectuer au clic
             click_data: Données pour l'action
@@ -71,7 +77,9 @@ class NotificationManager:
         """
         # Vérifier cooldown
         if cooldown_key:
-            current_time = game_time[0] * 86400 + game_time[1] * 3600 + game_time[2] * 60
+            # For cooldown, use day-based time calculation
+            year, month, day, hour, minute = game_time
+            current_time = (year * 365 + month * 30 + day) * 86400 + hour * 3600 + minute * 60
             if cooldown_key in self.cooldowns:
                 last_time = self.cooldowns[cooldown_key]
                 cooldown_duration = self.COOLDOWN_TIMES.get(cooldown_key, 0)
@@ -82,8 +90,9 @@ class NotificationManager:
             self.cooldowns[cooldown_key] = current_time
 
         # Créer notification
-        day, hour, minute = game_time
-        timestamp = f"{hour:02d}:{minute:02d}"
+        year, month, day, hour, minute = game_time
+        month_name = MONTH_NAMES_FULL[month - 1] if 1 <= month <= 12 else "Unknown"
+        timestamp = f"{day:02d} {month_name} {year}"
 
         notif = Notification(
             id=self.next_id,

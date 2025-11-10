@@ -4,7 +4,7 @@
 
 OpenPark est une simulation de parc d'attractions en **projection oblique**, développée en Python avec Pygame. Gérez votre parc, construisez des attractions, employez du personnel, et gardez vos visiteurs heureux!
 
-![Version](https://img.shields.io/badge/version-0.8.1--alpha-orange)
+![Version](https://img.shields.io/badge/version-0.8.2--alpha-orange)
 ![Python](https://img.shields.io/badge/python-3.8+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![AI-Powered](https://img.shields.io/badge/AI--Powered-Claude%20%26%20GPT-purple)
@@ -42,6 +42,8 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 - ✅ **Statistiques financières avancées** (graphiques 30j/1an, historique revenus/dépenses)
 - ✅ **Système météo saisonnier** (soleil/pluie/neige, impact visiteurs, effets visuels)
 - ✅ **Bureau de R&D complet** (budget mensuel, déblocage manuel, cap dynamique, 38 upgrades)
+- ✅ **Système de notifications** (toast, historique, dates complètes, types colorés)
+- ✅ **Sprites OpenMoji complets** (tous emojis textuels remplacés, interface cohérente)
 
 **Résultat**: Un moteur de jeu complet et fonctionnel développé entièrement via conversation avec IA! 🚀
 

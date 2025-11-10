@@ -175,7 +175,7 @@ class NotificationToast:
                 toast_surface.blit(text_render, (40, 10 + i * 20))
 
             # Timestamp (petit, en bas à droite)
-            timestamp_text = f"Day {notif.game_day} - {notif.timestamp}"
+            timestamp_text = notif.timestamp
             small_font = pygame.font.Font(None, 16)
             timestamp_render = small_font.render(timestamp_text, True, (200, 200, 200, alpha))
             toast_surface.blit(timestamp_render, (self.TOAST_WIDTH - 120, self.TOAST_HEIGHT - 18))

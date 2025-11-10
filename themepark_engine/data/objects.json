@@ -849,10 +849,10 @@
         "effect_type": "unlock",
         "effect_data": {
           "type": "decoration",
-          "items": ["deco_flower"]
+          "items": ["deco_sunflower", "deco_hibiscus"]
         },
         "prerequisites": [],
-        "description": "Débloque les fleurs"
+        "description": "Débloque les fleurs (Tournesol et Hibiscus)"
       },
       {
         "id": "deco_unlock_flags",
