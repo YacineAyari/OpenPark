@@ -1198,17 +1198,17 @@ class Game:
         Lower entrance fee = faster spawning (more guests)
         Higher entrance fee = slower spawning (fewer guests)
 
-        Formula: spawn_rate = 2.0 + (entrance_fee / 100) * 4.0
+        Formula: spawn_rate = 0.8 + (entrance_fee / 100) * 2.5
 
         Examples:
-        - $10 fee → 2.4s (fast)
-        - $50 fee → 4.0s (normal)
-        - $100 fee → 6.0s (slow)
-        - $200 fee → 10.0s (very slow)
+        - $10 fee → 1.05s (very fast)
+        - $50 fee → 2.05s (fast)
+        - $100 fee → 3.3s (normal)
+        - $200 fee → 5.8s (moderate)
         """
         entrance_fee = self.economy.park_entrance_fee
-        spawn_rate = 2.0 + (entrance_fee / 100.0) * 4.0
-        return max(1.0, min(15.0, spawn_rate))  # Clamp between 1s and 15s
+        spawn_rate = 0.8 + (entrance_fee / 100.0) * 2.5
+        return max(0.5, min(15.0, spawn_rate))  # Clamp between 0.5s and 15s
 
     def set_entrance_fee(self, amount):
         """Set park entrance fee and recalculate spawn rate"""
