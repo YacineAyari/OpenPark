@@ -3,7 +3,7 @@ import json, pygame, math
 from pathlib import Path
 from . import assets
 from .map import MapGrid, TILE_WALK, TILE_GRASS, TILE_RIDE_ENTRANCE, TILE_RIDE_EXIT, TILE_RIDE_FOOTPRINT, TILE_QUEUE_PATH, TILE_SHOP_ENTRANCE, TILE_SHOP_FOOTPRINT, TILE_PARK_ENTRANCE, TILE_RESTROOM_FOOTPRINT, TILE_BIN
-from .pathfinding import astar
+from . import pathfinding
 from .agents import Guest
 from .rides import Ride, RideDef, RideEntrance, RideExit
 from .shops import Shop, ShopDef, ShopEntrance
@@ -487,7 +487,7 @@ class Game:
                     queue_entrance = queue_path.get_entrance_position()
                     if queue_entrance:
                         DebugConfig.log('engine', f"Queue entrance at {queue_entrance}")
-                        path = astar(self.grid, (guest.grid_x, guest.grid_y), queue_entrance)
+                        path = pathfinding.get_path_cached(self.grid, (guest.grid_x, guest.grid_y), queue_entrance)
                         if path:
                             # Add this ride to available rides list
                             available_rides.append((ride, queue_path, queue_entrance, path))
@@ -1283,8 +1283,6 @@ class Game:
         if not self.park_entrance:
             return
 
-        from .pathfinding import astar
-
         evacuation_count = 0
         for guest in self.guests:
             # Only evacuate guests who are not already leaving
@@ -1293,7 +1291,7 @@ class Game:
                 entrance_pos = self.park_entrance
 
                 # Find path to park entrance
-                path = astar(self.grid, guest_pos, entrance_pos)
+                path = pathfinding.get_path_cached(self.grid, guest_pos, entrance_pos)
 
                 if path and len(path) > 1:
                     guest.path = path[1:]  # Skip current position
@@ -1488,7 +1486,7 @@ class Game:
                     )
 
                 # Find path to park entrance
-                path = astar(self.grid, guest_pos, entrance_pos)
+                path = pathfinding.get_path_cached(self.grid, guest_pos, entrance_pos)
 
                 if path and len(path) > 1:
                     guest.path = path[1:]  # Skip current position
@@ -1521,6 +1519,11 @@ class Game:
         # Calculate scaled delta time based on game speed
         # When paused (game_speed = 0), scaled_dt = 0, so entities don't move
         scaled_dt = dt * self.game_speed
+
+        # Update pathfinding system (cache aging and queue processing)
+        from . import pathfinding
+        pathfinding.tick_pathfinding()  # Age cache entries
+        pathfinding.process_pathfinding_queue(self.grid)  # Process queued path requests
 
         # Update game time based on speed (calendar system)
         # 1 in-game month = MONTH_DURATION_MINUTES real minutes at speed x1
@@ -1833,7 +1836,7 @@ class Game:
                 continue
             
             if g.state == "wandering" and not g.path and pts:
-                goal=random.choice(pts); p=astar(self.grid,(g.grid_x,g.grid_y),goal)
+                goal=random.choice(pts); p=pathfinding.get_path_cached(self.grid,(g.grid_x,g.grid_y),goal)
                 if p: g.path=p[1:]
             elif g.state == "walking_to_queue":
                 # Guest is walking to queue, no additional pathfinding needed
@@ -2183,7 +2186,7 @@ class Game:
                     entrance_x = shop.x + width // 2
                     entrance_y = shop.y + height - 1
                     shop_entrance = (entrance_x, entrance_y)
-                    path = astar(self.grid, (guest.grid_x, guest.grid_y), shop_entrance)
+                    path = pathfinding.get_path_cached(self.grid, (guest.grid_x, guest.grid_y), shop_entrance)
                     if path:
                         available_shops.append((shop, shop_entrance, path))
             
@@ -2204,7 +2207,7 @@ class Game:
                 if queue_path and queue_path.can_enter():
                     queue_entrance = queue_path.get_entrance_position()
                     if queue_entrance:
-                        path = astar(self.grid, (guest.grid_x, guest.grid_y), queue_entrance)
+                        path = pathfinding.get_path_cached(self.grid, (guest.grid_x, guest.grid_y), queue_entrance)
                         if path:
                             available_rides.append((ride, queue_path, queue_entrance, path))
         
@@ -2244,7 +2247,7 @@ class Game:
                 entrance_x = shop.x + width // 2
                 entrance_y = shop.y + height - 1
                 shop_entrance = (entrance_x, entrance_y)
-                path = astar(self.grid, (guest.grid_x, guest.grid_y), shop_entrance)
+                path = pathfinding.get_path_cached(self.grid, (guest.grid_x, guest.grid_y), shop_entrance)
                 if path:
                     distance = len(path)
                     if distance < shortest_distance:
@@ -2270,7 +2273,7 @@ class Game:
                 entrance_x = shop.x + width // 2
                 entrance_y = shop.y + height - 1
                 shop_entrance = (entrance_x, entrance_y)
-                path = astar(self.grid, (guest.grid_x, guest.grid_y), shop_entrance)
+                path = pathfinding.get_path_cached(self.grid, (guest.grid_x, guest.grid_y), shop_entrance)
                 if path:
                     distance = len(path)
                     if distance < shortest_distance:
@@ -2306,7 +2309,7 @@ class Game:
                             nx, ny = rx + nx_offset, ry + ny_offset
                             if self.grid.in_bounds(nx, ny) and self.grid.get(nx, ny) == TILE_WALK:
                                 # Try pathfinding to this tile
-                                path = astar(self.grid, (guest.grid_x, guest.grid_y), (nx, ny))
+                                path = pathfinding.get_path_cached(self.grid, (guest.grid_x, guest.grid_y), (nx, ny))
                                 if path and len(path) < best_dist:
                                     best_dist = len(path)
                                     best_target = (nx, ny)
@@ -3811,7 +3814,7 @@ class Game:
 
                 # Pathfind to park entrance
                 emp_pos = (int(emp.x), int(emp.y))
-                path = astar_for_engineers(self.grid, emp_pos, self.park_entrance)
+                path = pathfinding.get_path_cached(self.grid, emp_pos, self.park_entrance, for_engineers=True)
 
                 if path:
                     emp.path = path
@@ -3942,11 +3945,10 @@ class Game:
             # For simplicity, just go to bin (70% chance)
             if random.random() < 0.7:
                 # Find path to bin
-                from .pathfinding import astar
                 bin_pos = (nearest_bin.x, nearest_bin.y)
                 guest_pos = (guest.grid_x, guest.grid_y)
-                
-                path = astar(self.grid, guest_pos, bin_pos)
+
+                path = pathfinding.get_path_cached(self.grid, guest_pos, bin_pos)
                 if path and len(path) > 1:
                     guest.path = path[1:]  # Skip current position
                     guest.target_bin = nearest_bin
@@ -4154,10 +4156,9 @@ class Game:
                                     target_restored = True
                                     # If engineer was moving to ride, recalculate path
                                     if emp_data.get('state') == 'moving_to_ride':
-                                        from .pathfinding import astar_for_engineers
                                         engineer_pos = (int(emp_data['x']), int(emp_data['y']))
                                         ride_pos = (ride.x, ride.y)
-                                        path = astar_for_engineers(self.grid, engineer_pos, ride_pos)
+                                        path = pathfinding.get_path_cached(self.grid, engineer_pos, ride_pos, for_engineers=True)
                                         if path:
                                             emp.path = path[1:]  # Exclude starting position
                                     break

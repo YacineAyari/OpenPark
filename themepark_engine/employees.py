@@ -65,13 +65,13 @@ class Engineer(Employee):
         
         # Calculer le chemin vers l'attraction
         if grid:
-            from .pathfinding import astar_for_engineers
+            from . import pathfinding
             ride_entrance = (ride.x, ride.y)  # Position de l'attraction
             engineer_pos = (int(self.x), int(self.y))
-            
+
             DebugConfig.log('employees', f"Engineer {self.id} at {engineer_pos}, trying to reach {ride.defn.name} at {ride_entrance}")
-            
-            path = astar_for_engineers(grid, engineer_pos, ride_entrance)
+
+            path = pathfinding.get_path_cached(grid, engineer_pos, ride_entrance, for_engineers=True)
             if path:
                 self.path = path[1:]  # Exclure la position de départ
                 DebugConfig.log('employees', f"Engineer {self.id} found path to {ride.defn.name}: {len(self.path)} steps")
@@ -382,7 +382,8 @@ class MaintenanceWorker(Employee):
             return True
 
         # Find path to litter
-        path = astar(grid, worker_pos, litter_pos)
+        from . import pathfinding
+        path = pathfinding.get_path_cached(grid, worker_pos, litter_pos)
         if path and len(path) > 1:
             self.path = path[1:]  # Skip current position
             self.state = "moving_to_litter"
@@ -396,13 +397,13 @@ class MaintenanceWorker(Employee):
         
     def start_gardening(self, garden_spot, grid):
         """Commencer l'entretien du jardin à une position spécifique"""
-        from .pathfinding import astar
+        from . import pathfinding
         self.target_garden_spot = garden_spot
         garden_pos = (int(garden_spot[0]), int(garden_spot[1]))
         worker_pos = (int(self.x), int(self.y))
 
         # Find path to garden spot
-        path = astar(grid, worker_pos, garden_pos)
+        path = pathfinding.get_path_cached(grid, worker_pos, garden_pos)
         if path and len(path) > 1:
             self.path = path[1:]  # Skip current position
             self.state = "moving_to_garden"
@@ -607,9 +608,10 @@ class MaintenanceWorker(Employee):
                 continue
 
             # Trouver un chemin vers cette position
+            from . import pathfinding
             worker_pos = (int(self.x), int(self.y))
             target_pos = (target_x, target_y)
-            path = astar(grid, worker_pos, target_pos)
+            path = pathfinding.get_path_cached(grid, worker_pos, target_pos)
 
             if path and len(path) > 1:
                 self.path = path[1:]
@@ -857,9 +859,10 @@ class SecurityGuard(Employee):
                 continue
 
             # Trouver un chemin vers cette position
+            from . import pathfinding
             guard_pos = (int(self.x), int(self.y))
             target_pos = (target_x, target_y)
-            path = astar(grid, guard_pos, target_pos)
+            path = pathfinding.get_path_cached(grid, guard_pos, target_pos)
 
             if path and len(path) > 1:
                 self.path = path[1:]
