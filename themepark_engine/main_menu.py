@@ -344,7 +344,7 @@ class MainMenu:
         self._draw_quit_button()
 
         # Draw version
-        version_text = "v0.8.2-alpha"
+        version_text = "v0.8.3-alpha"
         if self.music_loaded:
             version_text += " ♫"
         version_surf = self.font.render(version_text, True, (150, 150, 150))

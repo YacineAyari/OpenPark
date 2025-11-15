@@ -4,7 +4,7 @@
 
 OpenPark est une simulation de parc d'attractions en **projection oblique**, développée en Python avec Pygame. Gérez votre parc, construisez des attractions, employez du personnel, et gardez vos visiteurs heureux!
 
-![Version](https://img.shields.io/badge/version-0.8.2--alpha-orange)
+![Version](https://img.shields.io/badge/version-0.8.3--alpha-orange)
 ![Python](https://img.shields.io/badge/python-3.8+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![AI-Powered](https://img.shields.io/badge/AI--Powered-Claude%20%26%20GPT-purple)
@@ -68,6 +68,25 @@ Ce projet est une vitrine de ce qu'on peut accomplir avec les outils d'IA modern
 ## 🎮 Caractéristiques
 
 ### ✅ Déjà implémenté
+
+#### 🎬 **Menu Principal**
+- **Design professionnel** - Gradient bleu foncé/violet avec titre doré et sprites OpenMoji
+- **3 boutons principaux** :
+  - **Charger une partie** - Ouvre une modal avec la liste des sauvegardes
+  - **Nouvelle partie** - Modal de saisie du nom du parc
+  - **Quitter** - Ferme le jeu
+- **Système de sauvegardes multiples** :
+  - Sauvegardes nommées d'après le nom du parc (ex: `mon_parc.json`)
+  - Affichage des métadonnées : nom, date, cash, visiteurs
+  - Tri par date (plus récentes en premier)
+  - Hover effects et feedback visuel
+- **Musique de fond** - "Searching" par Eric Skiff (CC BY 4.0), loop continu
+- **Retour au menu** - Après avoir quitté le jeu (ESC), retour automatique au menu
+- **Modals interactives** :
+  - Overlay semi-transparent
+  - Champ de texte avec curseur clignotant (nouvelle partie)
+  - Liste cliquable de sauvegardes (charger)
+  - Fermeture par ESC ou bouton X
 
 #### 🏗️ **Système de construction**
 - **Chemins piétonniers** - Réseau de paths pour la circulation des visiteurs

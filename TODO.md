@@ -387,7 +387,40 @@
       * Indicateur dans le HUD (compteur non lues)
       * Notification automatique pour événements clés
 
-44. **Mode campagne**
+44. ✅ **Menu principal avec système de sauvegardes**
+    - Statut : Complété
+    - Difficulté : 3/5
+    - **Design professionnel** :
+      * Gradient bleu foncé/violet
+      * Titre doré "OPENPARK" avec sprites OpenMoji (🎡🎠)
+      * Musique de fond en loop ("Searching" par Eric Skiff, CC BY 4.0)
+    - **3 boutons principaux** :
+      * Charger une partie → ouvre modal de sélection
+      * Nouvelle partie → modal de saisie du nom du parc
+      * Quitter → ferme le jeu
+    - **Modal "Charger une partie"** :
+      * Liste des sauvegardes (max 4 affichées)
+      * Tri par date (plus récentes en premier)
+      * Affichage : nom du parc, date, cash, visiteurs
+      * Hover effects et feedback visuel
+      * Fermeture par ESC ou bouton X
+    - **Modal "Nouvelle partie"** :
+      * Champ de texte avec curseur clignotant
+      * Max 30 caractères pour le nom du parc
+      * Validation par ENTER ou clic sur "COMMENCER"
+      * Bouton désactivé si nom vide
+    - **Système de sauvegardes** :
+      * Sauvegardes nommées d'après le parc (ex: `mon_parc.json`)
+      * Métadonnées complètes dans chaque sauvegarde
+      * Support multi-sauvegardes (pas de limite)
+      * Nom du parc stocké et affiché
+    - **Intégration jeu** :
+      * Retour automatique au menu après avoir quitté (ESC)
+      * Réinitialisation propre de pygame
+      * Musique s'arrête en jeu, reprend au menu
+      * Gestion correcte des événements
+
+45. **Mode campagne**
     - Difficulté : 5/5
     - Scénarios prédéfinis avec objectifs
     - Progression et récompenses
@@ -402,6 +435,7 @@
 ## État actuel du système
 
 ### Fonctionnalités opérationnelles
+- ✅ **Menu principal professionnel** (3 boutons, modals, musique de fond, sauvegardes multiples)
 - ✅ Vue oblique avec angle Phi de 10°
 - ✅ Système de debug stable et fonctionnel
 - ✅ Placement de chemins en continu
@@ -483,6 +517,6 @@
 - Debug : logs catégorisés activables/désactivables par entité
 
 ---
-*Dernière mise à jour : 2025-11-10*
+*Dernière mise à jour : 2025-11-15*
 *Statut : En développement actif*
-*Version : 0.8.2-alpha*
+*Version : 0.8.3-alpha*
