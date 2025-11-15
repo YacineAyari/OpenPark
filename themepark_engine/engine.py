@@ -39,11 +39,15 @@ from .save_load import (SaveLoadManager, serialize_grid, serialize_ride, seriali
 DATA = Path(__file__).resolve().parent / 'data'
 
 class Game:
-    def __init__(self):
+    def __init__(self, save_slot: str = None, park_name: str = None):
         pygame.init()
         self.screen = pygame.display.set_mode((1280, 800))
         pygame.display.set_caption('OpenPark — Oblique Mode')
         self.clock = pygame.time.Clock()
+
+        # Save slot management
+        self.save_slot = save_slot  # e.g., "slot_1.json"
+        self.park_name = park_name if park_name else "Mon Parc"
 
         # Use standard font (no emojis to avoid size issues)
         self.font = pygame.font.SysFont('Arial', 14)
@@ -3984,12 +3988,19 @@ class Game:
         Save the current game state
 
         Args:
-            save_name: Optional custom save name
+            save_name: Optional custom save name (overrides self.save_slot)
 
         Returns:
             Path to the saved file
         """
+        # Use provided save_name, or fall back to self.save_slot
+        if save_name is None and self.save_slot:
+            save_name = self.save_slot
+
         game_state = {
+            # Park identity
+            'park_name': self.park_name,
+
             # Grid state
             'grid': serialize_grid(self.grid),
 
@@ -4012,7 +4023,11 @@ class Game:
                 'guests_refused': self.economy.guests_refused
             },
 
-            # Time system
+            # Time system (add game_day to top level for menu display)
+            'game_day': self.game_day,
+            'game_year': self.game_year,
+            'game_month': self.game_month,
+            'cash': self.economy.cash,  # Duplicate for easy access in menu
             'time': {
                 'game_time': self.game_time,
                 'game_year': self.game_year,
@@ -4236,6 +4251,10 @@ class Game:
                 litter.offset_x = litter_data['offset_x']
                 litter.offset_y = litter_data['offset_y']
                 self.litter_manager.litters.append(litter)
+
+            # Restore park identity
+            self.park_name = game_state.get('park_name', 'Mon Parc')
+            self.save_slot = save_name  # Remember which slot we loaded from
 
             # Restore economy
             economy_data = game_state['economy']
